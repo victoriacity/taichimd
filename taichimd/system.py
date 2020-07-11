@@ -213,6 +213,6 @@ class MolecularDynamics:
             self.step()
             if self.gui is not None and irender > 0 and i % irender == 0:
                 if save:
-                    self.gui.show("frame%i.png" % i) 
+                    self.gui.show("frame%i.png" % (i // irender)) 
                 else:
                     self.gui.show()

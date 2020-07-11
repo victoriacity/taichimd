@@ -28,8 +28,8 @@ class GUI:
                     t_set = round(t_set - 0.1, 1)
                 self.system.set_temp(t_set) 
         color_t = 0xf56060 if abs(t_actual - t_set) > 0.02 else 0x74e662
-        self.gui.text("T_set = %.3g" % t_set, (0.05, 0.2), font_size=36)
-        self.gui.text("T_actual = %.3g" % t_actual, (0.05, 0.15), font_size=36, color=color_t)
+        self.gui.text("T_set = %.3g" % t_set, (0.05, 0.25), font_size=36)
+        self.gui.text("T_actual = %.3g" % t_actual, (0.05, 0.2), font_size=36, color=color_t)
 
 
     def show(self, savefile=None, draw_bonds=False):
@@ -39,7 +39,9 @@ class GUI:
             nbonds, self.system.bond_table)
         if self.system.temperature > 0:
             self.show_temperature()
-        self.gui.text("Internal energy = %.3f" % (self.system.energy()), (0.05, 0.1), font_size=36)
+        vcm = np.sum(self.system.velocity.to_numpy(), axis=0)
+        self.gui.text("Internal energy = %.3f" % (self.system.energy()), (0.05, 0.15), font_size=36)
+        self.gui.text("Momentum norm = %.3f" % np.sum(vcm ** 2), (0.05, 0.1), font_size=36)
         self.gui.show(savefile)
         
 
