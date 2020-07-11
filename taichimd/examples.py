@@ -4,7 +4,9 @@ import numpy as np
 from .system import MolecularDynamics
 from .interaction import *
 from .integrator import *
-from .ui import CanvasShader
+from ui import CanvasShader
+
+ti.init(arch=ti.cuda)
 
 
 def ljsystem(n, rho, temp, dt, integrator):
@@ -69,7 +71,6 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    ti.init(arch=ti.gpu)
     if args.ensemble == 'NVE':
         integrator = VerletIntegrator
     elif args.ensemble == 'NVT':
