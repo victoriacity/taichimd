@@ -33,4 +33,4 @@ if __name__ == "__main__":
         md = chain(10, 573, 0.0005, integrator)
     else:
         raise ValueError("Unknown system!")
-    md.run(40000, irender=400, save=True)
+    md.run()

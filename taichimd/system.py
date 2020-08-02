@@ -2,36 +2,41 @@ import taichi as ti
 import numpy as np
 from .ui import GUI
 from .consts import *
+from .integrator import VerletIntegrator
 
 @ti.data_oriented
 class MolecularDynamics:
 
-    MAX_BOND = 6
     
     '''
     Initializes the object, set up python scope
     variables and taichi vectors.
     '''
-    def __init__(self, n_particles, boxlength, integrator, dt, 
-                temperature=-1, bonded=None, nonbond=None, external=None,
-                shader=None):
+    def __init__(self, composition, boxlength, dt, forcefield,
+                integrator=VerletIntegrator, temperature=-1,
+                renderer=None):
         # python scope variables
-        self.boxlength = boxlength
-        self.temperature = temperature
-        self.n_particles = n_particles
-        # set up interactions
-        self.bonded_potential = bonded
-        self.nonbond_potential = nonbond
-        self.external_potential = external
-        # ti variables
+        self.boxlength = float(boxlength)
+        self.temperature = float(temperature)
+        self.composition = composition
+        self.mol_objs = list(composition.keys())
+        self.n_molecules = sum(composition.values())
+        self.n_particles = sum(m.natoms * n for m, n in composition.items())
+        max_atoms = max(m.natoms for m in composition.keys())
+        self.is_atomic = max_atoms == 1
+        self.forcefield = forcefield.register(self)
+        # particle properties
+        self.type = ti.var(dt=ti.i32)
         self.position = ti.Vector(DIM, dt=ti.f32)
         self.velocity = ti.Vector(DIM, dt=ti.f32)
-        self.force = ti.Vector(DIM, dt=ti.f32) 
+        self.force = ti.Vector(DIM, dt=ti.f32)
         ti.root.dense(ti.i, self.n_particles).place(
-            self.position, self.velocity, self.force)
-        #self.type = ti.var(dt=ti.u16, shape=self.n_particles)
-        self.nbonds = 0
-        self.bond_table = ti.Vector(2, dt=ti.u32, shape=self.MAX_BOND * self.n_particles) 
+            self.position, self.velocity, self.force, self.type)
+        # molecule table
+        if not self.is_atomic:
+            self.molecules = ti.var(dt=ti.i32)
+            self.moltypes = ti.var(dt=ti.i32)
+            ti.root.dense(ti.i, self.n_molecules).place(self.moltypes, self.molecules)
         # kinetic energy
         self.ek = ti.var(dt=ti.f32, shape=())
         # potential energy
@@ -39,18 +44,45 @@ class MolecularDynamics:
         self.time = -1
         self.integrator = integrator(self, dt)
         if self.integrator.requires_hessian:
-            self.hessian = ti.Matrix(DIM, DIM, dt=ti.f32, 
-                shape=(self.n_particles, self.n_particles))
-        if self.temperature > 0:
-            self.set_temp(temperature)
+            self.hessian = ti.Matrix(DIM, DIM, dt=ti.f32)
+            ti.root.dense(ti.ij, (self.n_particles, self.n_particles)).place(self.hessian)
         # spawns GUI
-        if shader:
-            self.gui = GUI(self, shader)
+        if renderer:
+            self.gui = GUI(self, renderer)
+        self.place_molecules()
+        if temperature > 0:
+            self.set_temp(temperature)
         
-    
     def set_temp(self, temperature):
         self.temperature = temperature
         self.integrator.set_temp(temperature)
+
+    def place_molecules(self):
+        types = []
+        for m, n in self.composition.items():
+            types += m.atoms * n
+        self.type.from_numpy(np.array(types, dtype=np.int))
+        if not self.is_atomic:
+            i0 = 0
+            moltypes = []
+            mol_prefix = []
+            for i, packed in enumerate(self.composition.items()):
+                m, n = packed
+                mol_prefix.append(np.arange(n) * m.natoms)
+                moltypes += [i] * n
+                self.forcefield.populate_tables(i0, m, n)
+                i0 += n
+            self.moltypes.from_numpy(np.array(moltypes))
+            self.molecules.from_numpy(np.hstack(mol_prefix))
+        self.forcefield.build()
+            
+
+    @ti.kernel
+    def add_molecules(self, i0: ti.i32, natom: ti.i32, nmolec: ti.i32):
+        for i in range(natom * nmolec):
+            iatom = i % natom
+            imolec = i // natom
+            self.molecules[imolec, iatom] = i + i0
 
     @ti.pyfunc
     def get_temp(self) -> ti.f32:
@@ -68,13 +100,6 @@ class MolecularDynamics:
             self.ek[None] += (self.velocity[i] ** 2).sum() / 2.0
         return self.energy()
 
-    def make_bond(self, i, j):
-        if i < j:
-            i, j = j, i
-        self.bond_table[self.nbonds][0] = i
-        self.bond_table[self.nbonds][1] = j
-        self.nbonds += 1
-
     '''
     Initializes the simulation system by placing particles on a regular grid
     and randomize their velocities according to the temperature. 
@@ -85,27 +110,65 @@ class MolecularDynamics:
                 raise Exception("Temperature is required for grid initialization!")
             else:
                 temperature = self.temperature
-        n_pow = int(self.n_particles ** (1. / DIM))
+        n_pow = int(self.n_molecules ** (1. / DIM))
         # n_axes = [nx, ny, ...] is the number of particles along each axis to be placed.
         n_axes = np.array([n_pow] * DIM)
         for i in range(DIM):
-            if n_pow ** (DIM - i) * (n_pow + 1) * i < self.n_particles:
+            if n_pow ** (DIM - i) * (n_pow + 1) * i < self.n_molecules:
                 n_axes[i] += 1
         disp = self.boxlength / n_axes
         coords_1d = [d * (0.5 + np.arange(n)) for d, n in zip(disp, n_axes)]
-        self.position.from_numpy(
-            np.stack(np.meshgrid(*coords_1d)).reshape(DIM, -1)[:, :self.n_particles].T)
+        pos_cm = (np.stack(np.meshgrid(*coords_1d)).reshape(DIM, -1)\
+                [:, :self.n_molecules].T)
+        pos_all = []
+        i0 = 0
+        for m, n in self.composition.items():
+            pos_mol = np.repeat(pos_cm[i0: i0 + n], m.natoms, axis=0)\
+                + np.tile(m.struc, (n, 1))
+            i0 += n
+            pos_all.append(pos_mol)
+        self.position.from_numpy(np.vstack(pos_all))
         self.time = 0
         self.randomize_velocity()
         self.calculate_energy()
 
+    #@ti.kernel
     def randomize_velocity(self):
         vs = np.random.random((self.n_particles, DIM)) - 0.5
         vcm = np.mean(vs, axis=0).reshape((1, DIM))
         vs -= vcm
         vs *= np.sqrt(DIM * self.temperature * self.n_particles / np.sum(vs ** 2))
         self.velocity.from_numpy(vs)
+        '''
+        vs = np.random.random((self.n_molecules, DIM)) - 0.5
+        vcm = ti.Vector([0, 0, 0])
+        for i in range(self.n_molecules):
+            m = self.molecule_types[self.type[i]]
+            for j in ti.static(range(m.natoms)):
+                self.velocity[i, j] = vs[i]
+                vcm += self.velocity[i, j]
+        vcm /= self.natoms
+        v2tot = 0.0
+        for i in range(self.n_molecules):
+            m = self.molecule_types[self.type[i]]
+            for j in ti.static(range(m.natoms)):
+                self.velocity[i, j] -= vcm
+                v2tot += (self.velocity[i, j] ** 2).sum()
+        vscale = ti.sqrt(DIM * self.temperature * self.natoms / v2tot)
+        for i in range(self.n_molecules):
+            m = self.molecule_types[self.type[i]]
+            for j in ti.static(range(m.natoms)):
+                self.velocity[i, j] *= vscale
+        '''
 
+    @ti.kernel
+    def init_molecules(self):
+        #print(self.molecule_types)
+        for i in range(self.n_molecules):
+            m = self.molecule_types[self.type[i]]
+            xcm = self.position[i, 0]
+            for j in ti.static(range(m.natoms)):
+                self.position[i, j] = xcm + m.struc[j]
 
 
     def read_restart(self, position, velocity=None, centered=False):
@@ -120,9 +183,6 @@ class MolecularDynamics:
             self.velocity.fill(0)
         self.calculate_energy()
         self.time = 0
-
-    def set_dt(dt):
-        self.integrator.dt = dt
 
     '''
     Calculates distance with periodic boundary conditions
@@ -150,51 +210,7 @@ class MolecularDynamics:
 
     @ti.func
     def calc_force(self):
-        self.ep[None] = 0.0
-        for i in self.force:
-            self.force[i].fill(0)
-            if ti.static(self.external_potential != None):
-                self.ep[None] += self.external_potential(self.position[i])
-                self.force[i] += self.external_potential.force(self.position[i])
-                if ti.static(self.integrator.requires_hessian):
-                    self.hessian[i, i] += self.external_potential.hessian(self.position[i])
-        if ti.static(self.nonbond_potential != None):
-            for i, j in ti.ndrange(self.n_particles, self.n_particles):
-                if i < j:
-                    d = self.calc_distance(self.position[j], self.position[i])
-                    r2 = (d ** 2).sum()
-                    uij = self.nonbond_potential(r2)
-                    if uij != 0:
-                        self.ep[None] += uij
-                        force = self.nonbond_potential.force(d, r2)
-                        # += performs atomic add
-                        self.force[i] += force
-                        self.force[j] -= force
-                        if ti.static(self.integrator.requires_hessian):
-                            h = self.nonbond_potential.hessian(d, r2)
-                            self.hessian[i, j] = h
-                            self.hessian[j, i] = h
-                            self.hessian[i, i] -= h
-                            self.hessian[j, j] -= h
-        if ti.static(self.nbonds > 0):
-            for n in range(self.nbonds):
-                i = self.bond_table[n][0]
-                j = self.bond_table[n][1]
-                d = self.calc_distance(self.position[j], self.position[i])
-                if ti.static(self.bonded_potential == None):
-                    raise NotImplementedError("Rigid bonds are not implemented yet!") 
-                else:
-                    r2 = (d ** 2).sum()
-                    self.ep[None] += self.bonded_potential(r2)
-                    force = self.bonded_potential.force(d, r2)
-                    self.force[i] += force
-                    self.force[j] -= force
-                    if ti.static(self.integrator.requires_hessian):
-                        h = self.bonded_potential.hessian(d, r2)
-                        self.hessian[i, j] = h
-                        self.hessian[j, i] = h
-                        self.hessian[i, i] -= h
-                        self.hessian[j, j] -= h
+        self.forcefield.calc_force()
 
 
     def step(self):

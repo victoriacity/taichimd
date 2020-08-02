@@ -77,8 +77,8 @@ class NVTIntegrator(VerletIntegrator):
         self.temp = ti.var(dt=ti.f32, shape=())
         self.xi = ti.var(dt=ti.f32, shape=2)
         self.vxi = ti.var(dt=ti.f32, shape=2)
-        self.xi.fill(0)
-        self.vxi.fill(0)
+        self.xi.fill(0.0)
+        self.vxi.fill(0.0)
         super().__init__(system, dt)
 
     '''

@@ -1,3 +1,4 @@
+from inspect import getargspec
 import taichi as ti
 from .consts import *
 
@@ -8,7 +9,12 @@ class ForceNotImplemented(NotImplementedError):
     pass
 
 
-class ExternalPotential:
+class Interaction:
+
+    def fill_params(self, *args):
+        return list(args)
+
+class ExternalPotential(Interaction):
 
     def __call__(self, r):
         pass
@@ -53,7 +59,7 @@ class InverseSquare(ExternalPotential):
 '''
 Pair interactions
 '''
-class PairInteraction:
+class PairInteraction(Interaction):
 
     '''
     singleton class to denote zero,
@@ -63,105 +69,140 @@ class PairInteraction:
     class Zero: pass
     ZERO = Zero()
     
-    def __call__(self, r2):
+    def __call__(self, r2, args):
         raise NotImplementedError
 
-    def derivative(self, r2):
+    def derivative(self, r2, args):
         raise ForceNotImplemented
 
-    def second_derivative(self, r2):
+    def second_derivative(self, r2, args):
         raise HessianNotImplemented
 
     @ti.func
-    def force(self, r, r2):
-        return 2. * self.derivative(r2) * r
+    def force(self, r, r2, args):
+        return 2. * self.derivative(r2, args) * r
     
     @ti.func
-    def hessian(self, r, r2):
-        return -4. * r.outer_product(r) * self.second_derivative(r2) \
-            - 2 * IDENTITY * self.derivative(r2)
+    def hessian(self, r, r2, args):
+        return -4. * r.outer_product(r) * self.second_derivative(r2, args) \
+            - 2 * IDENTITY * self.derivative(r2, args)
 
 class LennardJones(PairInteraction):
+    
+    n_params = 3
 
-    def __init__(self, sigma, epsilon, rcut, rcutin=0):
-        self.s6 = sigma ** 6
-        self.s12 = self.s6 ** 2
-        self.e = epsilon
-        self.ecut = 4. * self.e * \
-             ((sigma / rcut) ** 12 - (sigma / rcut) ** 6)
+    def __init__(self, rcut=0):
+        self.rcut = rcut
         self.rc2 = rcut ** 2
-        self.rin2 = rcutin ** 2
-
+        self.irc6 = 1 / rcut ** 6
+        self.irc12 = self.irc6 ** 2
+   
     @ti.func
-    def __call__(self, r2):
+    def __call__(self, r2, args):
         u = 0.0
-        if self.rin2 < r2 < self.rc2:
-            u = 4. * self.e * (self.s12 / r2 ** 6 - self.s6 / r2 ** 3) - self.ecut
+        if ti.static(self.rcut <= 0) or 0 < r2 < self.rc2:
+            s12, s6, e = args[0], args[1], args[2]
+            u = 4. * e * (s12 * (1 / r2 ** 6 - self.irc12)
+                - s6 * (1 / r2 ** 3 - self.irc6))
         return u
 
     @ti.func
-    def derivative(self, r2):
-        return 12. * self.e / r2 \
-            * (-2. * self.s12 / r2 ** 6 + self.s6 / r2 ** 3) 
+    def derivative(self, r2, args):
+        s12, s6, e = args[0], args[1], args[2]
+        return 12. * e / r2 \
+            * (-2. * s12 / r2 ** 6 + s6 / r2 ** 3) 
     @ti.func
-    def second_derivative(self, r2):
-        return 24. * self.e / r2 ** 2 \
-            * (7. * self.s12 / r2 ** 6 - 2. * self.s6 / r2 ** 3)
+    def second_derivative(self, r2, args):
+        s12, s6, e = args[0], args[1], args[2]
+        return 24. * e / r2 ** 2 \
+            * (7. * s12 / r2 ** 6 - 2. * s6 / r2 ** 3)
+
+    def fill_params(self, sigma, epsilon):
+        s6 = sigma ** 6
+        s12 = s6 ** 2
+        return [s12, s6, epsilon]
+
+    def combine(self, v1, v2):
+        s_i, e_i = v1[0], v1[1]
+        s_j, e_j = v2[0], v2[1]
+        return self.fill_params(
+            (s_i + s_j) / 2., ti.sqrt(e_i * e_j))
 
 class Coulomb(PairInteraction):
+
+    n_params = 1
     
-    def __init__(self, k):
-        self.k = k
     
     @ti.func
-    def __call__(self, r2):
-        return self.k / ti.sqrt(r2)
+    def __call__(self, r2, args):
+        k = args[0]
+        return k / ti.sqrt(r2)
 
     @ti.func
-    def derivative(self, r2):
+    def derivative(self, r2, args):
+        k = args[0]
         r = ti.sqrt(r2)
-        return -self.k / (2 * r * r2)
+        return -k / (2 * r * r2)
 
     @ti.func
-    def second_derivative(self, r2):
+    def second_derivative(self, r2, args):
+        k = args[0]
         r = ti.sqrt(r2)
-        return 3. * self.k / (4 * r * r2 * r2)
+        return 3. * k / (4 * r * r2 * r2)
 
 
 class HarmonicPair(PairInteraction):
-    def __init__(self, k, r0):
-        self.k = k
-        self.r0 = r0
+
+    n_params = 2
 
     @ti.func
-    def __call__(self, r2):
+    def __call__(self, r2, args):
+        k, r0 = args[0], args[1]
         r = ti.sqrt(r2)
-        return self.k * (r - self.r0) ** 2 / 2
+        return k * (r - r0) ** 2 / 2
 
     @ti.func
-    def derivative(self, r2):
-        return self.k * (1 - self.r0 / ti.sqrt(r2)) / 2
+    def derivative(self, r2, args):
+        k, r0 = args[0], args[1]
+        return k * (1 - r0 / ti.sqrt(r2)) / 2
 
     @ti.func
-    def second_derivative(self, r2):
+    def second_derivative(self, r2, args):
+        k, r0 = args[0], args[1]
         r = ti.sqrt(r2)
-        return self.k * self.r0 / (2 * r * r2)
+        return k * r0 / (2 * r * r2)
 
 
 class ParabolicPotential(PairInteraction):
 
-    def __init__(self, k):
-        self.k = k
+    n_params = 1
+
 
     @ti.func
-    def __call__(self, r2):
+    def __call__(self, r2, args):
+        k = args[0]
         r = ti.sqrt(r2)
-        return self.k * r ** 2 / 2
+        return k * r ** 2 / 2
 
     @ti.func
-    def derivative(self, r2):
-        return self.k / 2
+    def derivative(self, r2, args):
+        k = args[0]
+        return k / 2
 
     @ti.func
-    def second_derivative(self, r2):
+    def second_derivative(self, r2, args):
         return 0.
+
+'''
+harmonic bond bending
+true harmonic: e = k * (acos(x) - theta0) ** 2
+second order approx: e = (x - x0) ** 2 / (1 - x0 ** 2), x0 = cos(theta0)
+third order approx: e = (x - x0) ** 2 / (1 - x0 ** 2) + x0 ** 2 * (x - x0) ** 3 / 
+(1 - x0 ** 2) ** 2
+
+calculate force: x = (r1 - r0)^T.(r2 - r0) = r1^T.r2 - r0^T.(r1 + r2) + r0^2
+dx/dr_1 = (r2 - r0)
+dx/dr_2 = (r1 - r0)
+dx/dr_0 = (2r0 - r1 - r2)
+
+'''
