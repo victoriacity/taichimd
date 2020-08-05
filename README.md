@@ -19,15 +19,17 @@ positional arguments:
               ho: Harmonic oscillator around the center of the simulation box; 
               chain: 5 harmonic-bond chain molecules with 100 atoms each, bond bending and torsion not included, in real
               units
+              pr: 512 propane molecules using the TraPPE-UA force field with a harmonic bond
+              stretching potential at 423 K in a 50*50*50 angstrom box
   ensemble    [NVE | NVT] 
-              NVE ensemble with verlet integration or NVT ensmble with Nose-Hoover thermostat
+              NVE ensemble with Verlet integration or NVT ensemble with Nose-Hoover thermostat
 ```
 optional arguments: `-h, --help  show help message and exit`
 
 
 ## Future work
 ### Microscopic forces
-* Add support for harmonic bond bending potentials and torsional potentials as cosine series
+* Add support for ~~harmonic bond bending potentials and~~ torsional potentials as cosine series
 * Add Coulomb forces between charged atoms
 ### Acceleration algorithms
 * Implement grid-based neighbor lists for large systems
