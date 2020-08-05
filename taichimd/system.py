@@ -113,11 +113,13 @@ class MolecularDynamics:
         n_pow = int(self.n_molecules ** (1. / DIM))
         # n_axes = [nx, ny, ...] is the number of particles along each axis to be placed.
         n_axes = np.array([n_pow] * DIM)
+        print(self.n_molecules, n_pow)
         for i in range(DIM):
-            if n_pow ** (DIM - i) * (n_pow + 1) * i < self.n_molecules:
+            if n_pow ** (DIM - i) * (n_pow + 1) ** i < self.n_molecules:
                 n_axes[i] += 1
         disp = self.boxlength / n_axes
         coords_1d = [d * (0.5 + np.arange(n)) for d, n in zip(disp, n_axes)]
+        print(n_axes, coords_1d)
         pos_cm = (np.stack(np.meshgrid(*coords_1d)).reshape(DIM, -1)\
                 [:, :self.n_molecules].T)
         pos_all = []
@@ -137,6 +139,12 @@ class MolecularDynamics:
         vs = np.random.random((self.n_particles, DIM)) - 0.5
         vcm = np.mean(vs, axis=0).reshape((1, DIM))
         vs -= vcm
+        i0 = 0
+        for m, n in self.composition.items():
+            vel_mol = vs[i0: i0 + n * m.natoms].reshape(-1, m.natoms, DIM)
+            vel_mol = np.tile(np.mean(vel_mol, axis=1).reshape(-1, 1, DIM) / m.natoms, (1, m.natoms, 1))
+            vs[i0: i0 + n * m.natoms] = np.repeat(np.mean(vel_mol, axis=1) / m.natoms, m.natoms, axis=0)
+            i0 += n * m.natoms
         vs *= np.sqrt(DIM * self.temperature * self.n_particles / np.sum(vs ** 2))
         self.velocity.from_numpy(vs)
         '''

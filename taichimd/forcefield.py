@@ -69,7 +69,7 @@ class ClassicalFF(ForceField):
             self.bend_np = []
             self.bend = ti.Vector(4, dt=ti.i32)
             self.bending_params = ti.Vector(self.bending.n_params, dt=ti.f32)
-            ti.root.dynamic(ti.i, self.MAX_BEND 
+            ti.root.dense(ti.i, self.MAX_BEND 
                     * system.n_particles).place(self.bend)
             ti.root.pointer(ti.i, self.MAX_BENDTYPE).place(self.bending_params)
         if ti.static(not system.is_atomic and self.torsional != None):
@@ -195,3 +195,30 @@ class ClassicalFF(ForceField):
                             sys.hessian[j, i] = h
                             sys.hessian[i, i] -= h
                             sys.hessian[j, j] -= h
+
+        if ti.static(not sys.is_atomic and self.bending != None):
+            if ti.static(sys.integrator.requires_hessian):
+                raise NotImplementedError("Hessian not supported for bond bending potentials!")
+            for x in self.bend:
+                bendtype, i, j, k = self.bend[x][0], self.bend[x][1], self.bend[x][2], self.bend[x][3]
+                if bendtype > 0:
+                    params = self.bending_params[bendtype]
+                    v1 = sys.calc_distance(sys.position[i], sys.position[j])
+                    v2 = sys.calc_distance(sys.position[k], sys.position[j])
+                    if ti.static(self.bonded == None):
+                        raise NotImplementedError("Fixed bond angles are not implemented yet!") 
+                    else:
+                        l1 = v1.norm()
+                        l2 = v2.norm()
+                        d = v1.dot(v2)
+                        cosx = d / (l1 * l2)
+                        sys.ep[None] += self.bending(cosx, params)
+                        d_cosx = self.bending.derivative(cosx, params)
+                        u = 1 / l1 / l2
+                        f1 = (v2 - d / l1 ** 2 * v1) * u
+                        f2 = (v1 - d / l2 ** 2 * v2) * u
+                        sys.force[i] -= f1 * d_cosx
+                        sys.force[k] -= f2 * d_cosx
+                        sys.force[j] += (f1 + f2) * d_cosx
+
+                        

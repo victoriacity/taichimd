@@ -61,14 +61,7 @@ Pair interactions
 '''
 class PairInteraction(Interaction):
 
-    '''
-    singleton class to denote zero,
-    used to avoid repeating updates of 
-    force or hessian.
-    '''
-    class Zero: pass
-    ZERO = Zero()
-    
+ 
     def __call__(self, r2, args):
         raise NotImplementedError
 
@@ -200,9 +193,62 @@ second order approx: e = (x - x0) ** 2 / (1 - x0 ** 2), x0 = cos(theta0)
 third order approx: e = (x - x0) ** 2 / (1 - x0 ** 2) + x0 ** 2 * (x - x0) ** 3 / 
 (1 - x0 ** 2) ** 2
 
-calculate force: x = (r1 - r0)^T.(r2 - r0) = r1^T.r2 - r0^T.(r1 + r2) + r0^2
-dx/dr_1 = (r2 - r0)
-dx/dr_2 = (r1 - r0)
-dx/dr_0 = (2r0 - r1 - r2)
+calculate force:
+x = cos<r1-r0, r2-r0> = (r1 - r0)^T.(r2 - r0) / (|r1 - r0|*|r2 - r0|)  
+
+d|r|/dr = d(sqrt(r^T.r))/dr = e[r] = r / |r|
+
+let u = (r1 - r0)^T.(r2 - r0) = (r1^T.r2 - r0^T.(r1 + r2) + r0^2)
+
+du/dr_1 = (r2 - r0)
+du/dr_2 = (r1 - r0)
+du/dr_0 = (2r0 - r1 - r2)
+
+let v = |r1 - r0|*|r2 - r0|
+
+dv/dr_1 = |r2 - r0|/|r1 - r0| * (r1 - r0)
+dv/dr_2 = |r1 - r0|/|r2 - r0| * (r2 - r0)
+dv/dr_0 = -|r1 - r0|/|r2 - r0| * (r2 - r0) - |r2 - r0|/|r1 - r0| * (r1 - r0)
+
+dx = vdu - udv / u**2
+
+dx/dr_1 = [|r1 - r0|*|r2 - r0|*(r2 - r0) - (r1 - r0)^T.(r2 - r0)*|r2 - r0|/|r1 - r0| * (r1 - r0)] / u**2
+        = [(r2 - r0) - (r1 - r0)^T.(r2 - r0) / (r1 - r0) ** 2 * (r1 - r0)]/u
+
+dx/dr_2 is the same
+
+dx/dr_0 = -dx/dr_1-dx/dr_2
 
 '''
+
+class BondBending(Interaction):
+
+    '''
+    Bond bending potentials operate on the angle cosine
+    between two bond vectors [r1<--r0-->r2],
+    U = f(cosx, args)
+    f* = dU/dr* = f'(cosx) * d(cosx)/dr*
+    '''
+
+    @ti.func
+    def __call__(self, cosx, args):
+        raise NotImplementedError
+    @ti.func
+    def derivative(self, cosx, args):
+        raise NotImplementedError
+
+
+class HarmonicBending(BondBending):
+
+    n_params = 2
+
+    @ti.func
+    def __call__(self, cosx, args):
+        k, theta0 = args[0], args[1]
+        return 1/2. * k * (ti.acos(cosx) - theta0) ** 2
+    
+    @ti.func
+    def derivative(self, cosx, args):
+        k, theta0 = args[0], args[1]
+        return - k * (ti.acos(cosx) - theta0) / ti.sqrt(1 - cosx ** 2)
+

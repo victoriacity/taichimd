@@ -3,6 +3,7 @@ import numpy as np
 
 WINDOW_SIZE = 1024
 rgb2hex = lambda x: x[0].astype(np.int) * 65536 + x[1].astype(np.int) * 256 + x[2].astype(np.int)
+alpha = lambda c1, c2, z: rgb2hex(np.outer(c1, 1 - z) + np.outer(c2, z))
 
 
 class GUI:
@@ -33,8 +34,12 @@ class GUI:
 
 
     def show(self, savefile=None):
+        if ti.static(not self.system.is_atomic):
+            bonds = self.system.forcefield.bond.to_numpy()
+        else:
+            bonds = None
         self.renderer.render(self.system.position.to_numpy() \
-            / self.system.boxlength)
+            / self.system.boxlength, bonds)
         if self.system.temperature > 0:
             self.show_temperature()
         vcm = np.sum(self.system.velocity.to_numpy(), axis=0)
@@ -59,12 +64,18 @@ class CanvasRenderer(Renderer):
     circ = np.array([122, 200, 225])
     bond = np.array([62, 165, 45])
 
-    def render(self, positions):
+    def render(self, positions, bonds):
         self.gui.clear(rgb2hex(self.bg))   
         z = positions[:, 2]
         xy = positions[:, :2]
         z_order = np.argsort(z)
         sizes = self.radius * self.camera / (self.camera + (1 - z))
         z /= np.max(z)
-        colors = rgb2hex(np.outer(self.bg, 1 - z) + np.outer(self.circ, z))
-        self.gui.circles(xy, radius=sizes[z_order], color=colors[z_order])
+        colors = alpha(self.bg, self.circ, z)
+        if bonds is not None:
+            bonds = bonds[bonds[:, 0] > 0]
+            bonds_a, bonds_b = xy[bonds[:, 1]], xy[bonds[:, 2]]
+            mask = np.sum((bonds_a - bonds_b) ** 2, axis=1) < 0.5 ** 2
+            bond_colors = alpha(self.bg, self.bond, (z[bonds[mask, 1]] + z[bonds[mask, 2]]) / 2)
+            self.gui.lines(bonds_a[mask, :], bonds_b[mask, :], color=bond_colors, radius=self.radius / 3)
+        self.gui.circles(xy[z_order], radius=sizes[z_order], color=colors[z_order])

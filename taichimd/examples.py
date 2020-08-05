@@ -55,9 +55,33 @@ def chain(nchain, temp, dt, integrator, gui=True):
         intra=intra)
     ff = ClassicalFF(nonbond=LennardJones(rcut=14),
             bonded=HarmonicPair())
-    ff.set_params(nonbond={1:[3.95,460.0]}, bonded={1:[96500.0/2, l0]})
+    ff.set_params(nonbond={1:[3.95,46.0]}, bonded={1:[96500.0/2, l0]})
     md = MolecularDynamics({mol: nchain}, boxlength, dt, ff,
         integrator, temperature=temperature,
         renderer=CanvasRenderer if gui else None)
     md.read_restart(pos, centered=True)
+    return md
+
+
+def propane(nmolec, temp, dt, integrator, gui=True):
+    boxlength = 50
+    l0 = 1.54
+    theta0 = 114 * PI / 180
+    c, s = ti.cos(theta0), ti.sin(theta0)
+    mol = Molecule([1, 2, 1],
+        bond=[[1, 0, 1],[1, 1, 2]],
+        bending=[[1, 0, 1, 2]],
+        struc=np.array([[c, s, 0],[0, 0, 0],[c, -s, 0]],
+        ))
+    ff = ClassicalFF(nonbond=LennardJones(rcut=14),
+        bonded=HarmonicPair(),
+        bending=HarmonicBending(),
+        )
+    ff.set_params(nonbond={1:[3.75,98.0],2:[3.95,46.0]},
+        bonded={1:[96500.0/2, l0]},
+        bending={1:[62500, theta0]})
+    md = MolecularDynamics({mol: nmolec}, boxlength, dt, ff,
+        integrator, temperature=temp,
+        renderer=CanvasRenderer if gui else None)
+    md.grid_initialize()
     return md
