@@ -27,9 +27,15 @@ positional arguments:
 optional arguments: `-h, --help  show help message and exit`
 
 
+## Graphics
+TaichiMD mainly utilizes the [`taichi_three`](https://github.com/taichi-dev/taichi_three/tree/dev) (**0.0.3** or higher) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (current latest version on PyPI is 0.0.2), please download the package from the **dev branch** of taichi_three repository.
+
+If taichi_three was not imported correctly, the example simualtions will use the Taichi GUI canvas for graphics.
+
+
 ## Future work
 ### Microscopic forces
-* Add support for ~~harmonic bond bending potentials and~~ torsional potentials as cosine series
+* Add support for torsional potentials as cosine series
 * Add Coulomb forces between charged atoms
 ### Acceleration algorithms
 * Implement grid-based neighbor lists for large systems
@@ -38,6 +44,4 @@ optional arguments: `-h, --help  show help message and exit`
 * Implement gravity and wall boundaries
 * Incorporate macroscopic particle simulation algorithms (SPH, MPM, etc.)
 * Incorporate agent-based simulation algorithms (crowd simulation, particle swarm) and optimization-based integrators
-### Graphics
-* Add interactive 3D renderer, for particle simulations an SDF renderer is preferred due to the types of primitives to render
 
