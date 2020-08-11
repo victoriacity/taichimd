@@ -150,5 +150,7 @@ try:
 
 except ImportError as e:
     print(e)
-    print("Taichi_three package not found, only canvas renderer is available.")
+    print("Taichi_three (>= 0.0.3) not found, only canvas renderer is available.")
+    MDRenderer = CanvasRenderer
+    RTRenderer = CanvasRenderer
         
