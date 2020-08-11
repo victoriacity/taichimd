@@ -14,6 +14,8 @@ class MolecularModel(t3.common.AutoInit):
               [0, 0, 1],
             ]
 
+    AO = False
+
     def __init__(self, radius):
         self.L2W = t3.transform.Affine.var(())
         self.radius = radius
@@ -58,11 +60,13 @@ class MolecularModel(t3.common.AutoInit):
         for X in ti.grouped(camera.img):
             # zbuf == 0 means nothing was drawn at all
             if camera.zbuf[X] > 0:
-                # very rough AO
-                l = laplacian(camera.zbuf, X, 10) / camera.zbuf[X]
-                ao = min(1, max(1 - l * 10, 0))
-                if l > self.radius * camera.zbuf[X] ** 2:
-                    ao = 1
+                ao = 1.0
+                if ti.static(self.AO):
+                    # VERY ROUGH AO approximated by a laplacian
+                    # may be glitchy
+                    l = laplacian(camera.zbuf, X, 10) / camera.zbuf[X]
+                    if 0 < l < self.radius * camera.zbuf[X]:
+                        ao = min(1, max(1 - l * 10, 0)) 
                 # gamma = 2
                 camera.img[X] = ti.sqrt(camera.img[X] * ao)
 
