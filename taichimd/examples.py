@@ -6,7 +6,7 @@ from taichimd.interaction import *
 from taichimd.molecule import Molecule
 from taichimd.forcefield import ClassicalFF
 from taichimd.integrator import *
-from taichimd.ui import CanvasRenderer
+from taichimd.ui import *
 
 def ljsystem(n, rho, temp, dt, integrator, gui=True):
     boxlength = (n / rho) ** (1 / DIM)
@@ -15,7 +15,7 @@ def ljsystem(n, rho, temp, dt, integrator, gui=True):
     ff.set_params(nonbond={1:[1,1]})
     md = MolecularDynamics({mol: n}, boxlength, dt, ff,
         integrator, temperature=temp,
-        renderer=CanvasRenderer if gui else None)
+        renderer=MDRenderer if gui else None)
     md.grid_initialize()
     return md
 
@@ -26,7 +26,7 @@ def oscillator(dt, integrator, gui=True):
     ff = ClassicalFF(external=QuadraticWell(2., [5.,5.,5.]))
     md = MolecularDynamics({mol: n}, boxlength, dt, ff,
         integrator, temperature=1. if integrator == NVTIntegrator else -1,
-        renderer=CanvasRenderer if gui else None)
+        renderer=MDRenderer if gui else None)
     pos_init = np.array([[1., 0., 0.]])
     vel_init = np.array([[0., 3., 0.]])
     md.read_restart(pos_init, vel_init, centered=True)
@@ -58,8 +58,9 @@ def chain(nchain, temp, dt, integrator, gui=True):
     ff.set_params(nonbond={1:[3.95,46.0]}, bonded={1:[96500.0/2, l0]})
     md = MolecularDynamics({mol: nchain}, boxlength, dt, ff,
         integrator, temperature=temperature,
-        renderer=CanvasRenderer if gui else None)
+        renderer=MDRenderer if gui else None)
     md.read_restart(pos, centered=True)
+    md.randomize_velocity(keep_molecules=False)
     return md
 
 
@@ -67,21 +68,23 @@ def propane(nmolec, temp, dt, integrator, gui=True):
     boxlength = 50
     l0 = 1.54
     theta0 = 114 * PI / 180
-    c, s = ti.cos(theta0), ti.sin(theta0)
+    c, s = ti.cos(theta0 / 2), ti.sin(theta0 / 2)
+    struc = np.array([[c, s, 0],[0, 0, 0],[c, -s, 0]],
+        ) * l0
+    struc -= np.mean(struc, axis=0)
     mol = Molecule([1, 2, 1],
         bond=[[1, 0, 1],[1, 1, 2]],
         bending=[[1, 0, 1, 2]],
-        struc=np.array([[c, s, 0],[0, 0, 0],[c, -s, 0]],
-        ))
+        struc=struc)
     ff = ClassicalFF(nonbond=LennardJones(rcut=14),
         bonded=HarmonicPair(),
         bending=HarmonicBending(),
         )
     ff.set_params(nonbond={1:[3.75,98.0],2:[3.95,46.0]},
-        bonded={1:[96500.0/2, l0]},
+        bonded={1:[96500, l0]},
         bending={1:[62500, theta0]})
     md = MolecularDynamics({mol: nmolec}, boxlength, dt, ff,
         integrator, temperature=temp,
-        renderer=CanvasRenderer if gui else None)
+        renderer=MDRenderer if gui else None)
     md.grid_initialize()
     return md

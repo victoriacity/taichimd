@@ -42,13 +42,15 @@ class MolecularDynamics:
         # potential energy
         self.ep = ti.var(dt=ti.f32, shape=())
         self.time = -1
+        # spawns GUI
+        if renderer:
+            self.gui = GUI(self, renderer)
+
+
         self.integrator = integrator(self, dt)
         if self.integrator.requires_hessian:
             self.hessian = ti.Matrix(DIM, DIM, dt=ti.f32)
             ti.root.dense(ti.ij, (self.n_particles, self.n_particles)).place(self.hessian)
-        # spawns GUI
-        if renderer:
-            self.gui = GUI(self, renderer)
         self.place_molecules()
         if temperature > 0:
             self.set_temp(temperature)
@@ -113,13 +115,11 @@ class MolecularDynamics:
         n_pow = int(self.n_molecules ** (1. / DIM))
         # n_axes = [nx, ny, ...] is the number of particles along each axis to be placed.
         n_axes = np.array([n_pow] * DIM)
-        print(self.n_molecules, n_pow)
         for i in range(DIM):
             if n_pow ** (DIM - i) * (n_pow + 1) ** i < self.n_molecules:
                 n_axes[i] += 1
         disp = self.boxlength / n_axes
         coords_1d = [d * (0.5 + np.arange(n)) for d, n in zip(disp, n_axes)]
-        print(n_axes, coords_1d)
         pos_cm = (np.stack(np.meshgrid(*coords_1d)).reshape(DIM, -1)\
                 [:, :self.n_molecules].T)
         pos_all = []
@@ -135,11 +135,12 @@ class MolecularDynamics:
         self.calculate_energy()
 
     #@ti.kernel
-    def randomize_velocity(self):
+    def randomize_velocity(self, keep_molecules=True):
         vs = np.random.random((self.n_particles, DIM)) - 0.5
         vcm = np.mean(vs, axis=0).reshape((1, DIM))
         vs -= vcm
         i0 = 0
+        #if keep_molecules:
         for m, n in self.composition.items():
             vel_mol = vs[i0: i0 + n * m.natoms].reshape(-1, m.natoms, DIM)
             vel_mol = np.tile(np.mean(vel_mol, axis=1).reshape(-1, 1, DIM) / m.natoms, (1, m.natoms, 1))
@@ -233,10 +234,12 @@ class MolecularDynamics:
             raise Exception("System has not been initialized!")
         if nframe == 0:
             nframe = int(1e12)
+        play = True
         for i in range(nframe):
-            self.step()
+            if play:
+                self.step()
             if self.gui is not None and irender > 0 and i % irender == 0:
                 if save:
-                    self.gui.show("frame%i.png" % (i // irender)) 
+                    play = self.gui.show("frame%i.png" % (i // irender)) 
                 else:
-                    self.gui.show()
+                    play = self.gui.show()

@@ -198,13 +198,13 @@ x = cos<r1-r0, r2-r0> = (r1 - r0)^T.(r2 - r0) / (|r1 - r0|*|r2 - r0|)
 
 d|r|/dr = d(sqrt(r^T.r))/dr = e[r] = r / |r|
 
-let u = (r1 - r0)^T.(r2 - r0) = (r1^T.r2 - r0^T.(r1 + r2) + r0^2)
+let v = (r1 - r0)^T.(r2 - r0) = (r1^T.r2 - r0^T.(r1 + r2) + r0^2)
 
 du/dr_1 = (r2 - r0)
 du/dr_2 = (r1 - r0)
 du/dr_0 = (2r0 - r1 - r2)
 
-let v = |r1 - r0|*|r2 - r0|
+let u = |r1 - r0|*|r2 - r0|
 
 dv/dr_1 = |r2 - r0|/|r1 - r0| * (r1 - r0)
 dv/dr_2 = |r1 - r0|/|r2 - r0| * (r2 - r0)

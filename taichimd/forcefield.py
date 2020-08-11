@@ -126,12 +126,18 @@ class ClassicalFF(ForceField):
         if ti.static(not sys.is_atomic and self.bonded != None):
             for k, v in self.bonded_params_d.items():
                 self.bonded_params[k] = self.bonded.fill_params(*v)
-            self.bond.from_numpy(np.vstack(self.bond_np))
+            self.bond_np = np.vstack(self.bond_np)
+            self.bond.from_numpy(self.bond_np)
+            self.nbond = self.bond_np.shape[0]
         # build bend table
         if ti.static(not sys.is_atomic and self.bending != None):
+            
             for k, v in self.bending_params_d.items():
                 self.bending_params[k] = self.bending.fill_params(*v)
-            self.bend.from_numpy(np.vstack(self.bend_np))
+            self.bend_np = np.vstack(self.bend_np)
+            self.bend.from_numpy(self.bend_np)
+            # workaround
+            self.nbend = self.bend_np.shape[0]
         # build torsion table
         if ti.static(not sys.is_atomic and self.torsional != None):
             for k, v in self.torsional_params_d.items():
@@ -176,49 +182,48 @@ class ClassicalFF(ForceField):
                             sys.hessian[j, j] -= h
  
         if ti.static(not sys.is_atomic and self.bonded != None):
-            for x in self.bond:
+            for x in range(self.nbond):
                 bondtype, i, j = self.bond[x][0], self.bond[x][1], self.bond[x][2]
-                if bondtype > 0:
-                    params = self.bonded_params[bondtype]
-                    d = sys.calc_distance(sys.position[j], sys.position[i])
-                    if ti.static(self.bonded == None):
-                        raise NotImplementedError("Rigid bonds are not implemented yet!") 
-                    else:
-                        r2 = (d ** 2).sum()
-                        sys.ep[None] += self.bonded(r2, params)
-                        force = self.bonded.force(d, r2, params)
-                        sys.force[i] += force
-                        sys.force[j] -= force
-                        if ti.static(sys.integrator.requires_hessian):
-                            h = self.bonded.hessian(d, r2, params)
-                            sys.hessian[i, j] = h
-                            sys.hessian[j, i] = h
-                            sys.hessian[i, i] -= h
-                            sys.hessian[j, j] -= h
+                params = self.bonded_params[bondtype]
+                d = sys.calc_distance(sys.position[j], sys.position[i])
+                if ti.static(self.bonded == None):
+                    raise NotImplementedError("Rigid bonds are not implemented yet!") 
+                else:
+                    r2 = (d ** 2).sum()
+                    sys.ep[None] += self.bonded(r2, params)
+                    force = self.bonded.force(d, r2, params)
+                    sys.force[i] += force
+                    sys.force[j] -= force
+                    if ti.static(sys.integrator.requires_hessian):
+                        h = self.bonded.hessian(d, r2, params)
+                        sys.hessian[i, j] = h
+                        sys.hessian[j, i] = h
+                        sys.hessian[i, i] -= h
+                        sys.hessian[j, j] -= h
 
         if ti.static(not sys.is_atomic and self.bending != None):
             if ti.static(sys.integrator.requires_hessian):
                 raise NotImplementedError("Hessian not supported for bond bending potentials!")
-            for x in self.bend:
+            for x in range(self.nbend):
                 bendtype, i, j, k = self.bend[x][0], self.bend[x][1], self.bend[x][2], self.bend[x][3]
-                if bendtype > 0:
-                    params = self.bending_params[bendtype]
-                    v1 = sys.calc_distance(sys.position[i], sys.position[j])
-                    v2 = sys.calc_distance(sys.position[k], sys.position[j])
-                    if ti.static(self.bonded == None):
-                        raise NotImplementedError("Fixed bond angles are not implemented yet!") 
-                    else:
-                        l1 = v1.norm()
-                        l2 = v2.norm()
-                        d = v1.dot(v2)
-                        cosx = d / (l1 * l2)
-                        sys.ep[None] += self.bending(cosx, params)
-                        d_cosx = self.bending.derivative(cosx, params)
-                        u = 1 / l1 / l2
-                        f1 = (v2 - d / l1 ** 2 * v1) * u
-                        f2 = (v1 - d / l2 ** 2 * v2) * u
-                        sys.force[i] -= f1 * d_cosx
-                        sys.force[k] -= f2 * d_cosx
-                        sys.force[j] += (f1 + f2) * d_cosx
+                params = self.bending_params[bendtype]
+                v1 = sys.calc_distance(sys.position[i], sys.position[j])
+                v2 = sys.calc_distance(sys.position[k], sys.position[j])
+                if ti.static(self.bonded == None):
+                    raise NotImplementedError("Fixed bond angles are not implemented yet!") 
+                else:
+                    l1 = v1.norm()
+                    l2 = v2.norm()
+                    d = v1.dot(v2)
+                    cosx = d / (l1 * l2)
+                    #print(bendtype, cosx, ti.acos(cosx), params[1], self.bending(cosx, params))
+                    sys.ep[None] += self.bending(cosx, params)
+                    d_cosx = self.bending.derivative(cosx, params)
+                    u = 1 / l1 / l2
+                    f1 = (v2 - d / l1 ** 2 * v1) * u
+                    f2 = (v1 - d / l2 ** 2 * v2) * u
+                    sys.force[i] -= f1 * d_cosx
+                    sys.force[k] -= f2 * d_cosx
+                    sys.force[j] += (f1 + f2) * d_cosx
 
                         

@@ -28,15 +28,13 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown ensemble!")
     if args.example == 'lj':
-        md = ljsystem(4096, 0.1, 1, 0.01, integrator)
+        md = ljsystem(4096, 0.1, 1.5, 0.01, integrator)
     elif args.example == 'ho':
         md = oscillator(0.01, integrator)
     elif args.example == 'chain':
         md = chain(10, 573, 0.0005, integrator)
     elif args.example == 'pr':
-        md = propane(512, 1200, 0.0003, integrator)
-        md.run(1000, irender=-1)
-        md.set_temp(423)
+        md = propane(512, 423, 0.001, integrator)
     else:
         raise ValueError("Unknown system!")
-    md.run()
+    md.run(irender=5)
