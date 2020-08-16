@@ -8,13 +8,13 @@ from taichimd.forcefield import ClassicalFF
 from taichimd.integrator import *
 from taichimd.ui import *
 
-def ljsystem(n, rho, temp, dt, integrator, gui=True):
+def ljsystem(n, rho, temp, dt, integrator, gui=True, use_grid=False):
     boxlength = (n / rho) ** (1 / DIM)
     mol = Molecule(1)
     ff = ClassicalFF(nonbond=LennardJones(rcut=2.5))
     ff.set_params(nonbond={1:[1,1]})
     md = MolecularDynamics({mol: n}, boxlength, dt, ff,
-        integrator, temperature=temp,
+        integrator=integrator, use_grid=use_grid, temperature=temp,
         renderer=MDRenderer if gui else None)
     md.grid_initialize()
     return md

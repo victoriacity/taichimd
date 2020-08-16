@@ -1,15 +1,25 @@
 import taichi as ti
 from .consts import *
+from .common import *
 
 @ti.data_oriented
-class Integrator:
+class Integrator(Module):
 
-    def __init__(self, system, dt):
-        self.system = system
+    requires_force = True
+    requires_hessian = False
+
+    def __init__(self, dt):
         self.dt = dt
+
+    def register(self, system):
+        self.system = system
         
-    @ti.kernel
-    def integrate(self):
+    @ti.func
+    def prestep(self):
+        pass
+
+    @ti.func
+    def poststep(self):
         raise NotImplementedError
 
     '''
@@ -21,50 +31,39 @@ class Integrator:
         t_actual = self.system.get_temp()
         for i in self.system.velocity:
             self.system.velocity[i] *= (temperature / t_actual) ** 0.5
-        self.system.ek[None] *= temperature / t_actual
 
 @ti.data_oriented
 class ForwardEulerIntegrator(Integrator):
 
-    requires_hessian = False
-
-    @ti.kernel
-    def integrate(self):
-        self.system.ek[None] = 0.0
-        self.system.calc_force()
+    @ti.func
+    def poststep(self):
         for i in self.system.position:
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt)
-            self.system.velocity[i] = self.system.velocity[i] + self.system.force[i] * self.dt
-            self.system.ek[None] += (self.system.velocity[i] ** 2).sum() / 2
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt
+            if ti.static(self.requires_force):
+                self.system.velocity[i] = self.system.velocity[i] + self.system.force[i] * self.dt
 
 
 
 @ti.data_oriented
 class VerletIntegrator(Integrator):
-
-    requires_hessian = False
     
     @ti.func
-    def integrate_fn(self):
+    def prestep(self):
         '''
-        Integrate the motion of particles. Use Newton'w law of motion and 
+        Integrate the motion of particles. Use Newton's law of motion and 
         verlet integration scheme. Also calculates the kinetic and potential energies.
         '''
-        self.system.ek[None] = 0.0
         for i in self.system.position:
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt * 0.5)
-        self.system.calc_force()
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt * 0.5
+    @ti.func
+    def poststep(self):
         for i in self.system.position:
-            self.system.velocity[i] = self.system.velocity[i] + self.system.force[i] * self.dt
-            self.system.ek[None] += (self.system.velocity[i] ** 2).sum() / 2
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt * 0.5)
-
-    @ti.kernel
-    def integrate(self):
-        self.integrate_fn()
+            if ti.static(self.requires_force):
+                self.system.velocity[i] = self.system.velocity[i] + self.system.force[i] * self.dt
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt * 0.5
 
         
 @ti.data_oriented
@@ -73,13 +72,20 @@ class NVTIntegrator(VerletIntegrator):
     Q1 = 5
     Q2 = 5
 
-    def __init__(self, system, dt):
-        self.temp = ti.var(dt=ti.f32, shape=())
-        self.xi = ti.var(dt=ti.f32, shape=2)
-        self.vxi = ti.var(dt=ti.f32, shape=2)
+
+    def register(self, system):
+        self.temp = ti.var(dt=ti.f64, shape=())
+        self.xi = ti.var(dt=ti.f64, shape=2)
+        self.vxi = ti.var(dt=ti.f64, shape=2)
+        super().register(system)
+
+    def build(self):
+        if not hasattr(self.system, "ek"):
+            raise SimulationModuleError("NVT integrator requires "
+            "computing the kinetic energy! Please add EnergyAnalyzer to the simulation")
         self.xi.fill(0.0)
         self.vxi.fill(0.0)
-        super().__init__(system, dt)
+        self.set_temp(self.system.temperature)
 
     '''
     Substeps to integrate the thermostat.
@@ -110,21 +116,25 @@ class NVTIntegrator(VerletIntegrator):
         self.step_vxi1(G1)
         self.step_xi()
         s = ti.exp(-self.vxi[0] * self.dt * 0.5)
-        self.system.ek[None] *= s * s
+        self.system.ek[None] = ti.cast(self.system.ek[None] * s * s, ti.f32)
         G1 = (2 * self.system.ek[None] - 3 * self.system.n_particles * self.temp[None]) / self.Q1
         self.step_vxi1(G1)
         G2 = (self.Q1 * self.vxi[0] ** 2 - self.temp[None]) / self.Q2
         self.step_vxi2(G2)
         for i in self.system.velocity:
-            self.system.velocity[i] = self.system.velocity[i] * s
+            self.system.velocity[i] = ti.cast(self.system.velocity[i] * s, ti.f32)
 
     def set_temp(self, temperature):
         self.temp.fill(temperature)
 
-    @ti.kernel
-    def integrate(self):
+    @ti.func
+    def prestep(self):
         self.integrate_thermostat()
-        VerletIntegrator.integrate_fn(self)
+        VerletIntegrator.prestep(self)
+
+    @ti.func
+    def poststep(self):
+        VerletIntegrator.poststep(self)
         self.integrate_thermostat()
 
 '''
@@ -168,7 +178,7 @@ class JacobiSolver:
 
 
 class FixedPointSolver:
-    requires_hessian = False
+
     @ti.kernel
     def substep(self, dt:ti.f32) -> ti.f32:
         loss = 0.0
@@ -200,48 +210,50 @@ class ImplicitIntegrator(Integrator):
         self.vafter = ti.Vector(DIM, dt=ti.f32, shape=self.system.n_particles)
         self.residuals = ti.Vector(DIM, dt=ti.f32, shape=self.system.n_particles)
 
-    @ti.kernel
-    def init_step(self):
-        self.system.calc_force()
+    @ti.func   
+    def solve_velocity(self, dt):
         for i in self.system.velocity:
             self.vbefore[i] = self.system.velocity[i]
-
-        
-    def solve_velocity(self, dt):
         for niter in range(self.MAX_ITER):
             res = self.substep(dt)
             #print(res)
             if res < self.eps:
                 break
 
-    def integrate(self):
+    @ti.func
+    def integrate_motion(self):
+        raise NotImplementedError
+    
+    @ti.func
+    def prestep(self):
         if self.requires_hessian:
             self.system.hessian.fill(0)
-        self.init_step()
+
+    @ti.func
+    def poststep(self):
         self.solve_velocity(self.dt)
         self.integrate_motion()
 
 @ti.data_oriented
 class ImplicitMidpointIntegrator(ImplicitIntegrator):
 
-    @ti.kernel
-    def integrate_motion(self):
-        self.system.ek[None] = 0.0
+    @ti.func
+    def prestep(self):
+        super().prestep()
         for i in self.system.position:
             self.system.velocity[i] = self.vafter[i]
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt * 0.5)
-        self.system.calc_force()
-        for i in self.system.position:
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt * 0.5) 
-            self.system.velocity[i] += self.system.force[i] * self.dt * 0.5
-            self.system.ek[None] += (self.system.velocity[i] ** 2).sum() / 2.0
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt * 0.5
 
-    def integrate(self):
-        if self.requires_hessian:
-            self.system.hessian.fill(0)
-        self.init_step()
+    @ti.func
+    def integrate_motion(self):
+        for i in self.system.position:
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt * 0.5
+            self.system.velocity[i] += self.system.force[i] * self.dt * 0.5
+
+    @ti.func
+    def poststep(self):
         self.solve_velocity(self.dt / 2)
         self.integrate_motion()
 
@@ -251,12 +263,10 @@ class BackwardEulerIntegrator(ImplicitIntegrator):
 
     @ti.kernel
     def integrate_motion(self):
-        self.system.ek[None] = 0.0
         for i in self.system.position:
             self.system.velocity[i] = self.vafter[i]
-            self.system.position[i] = self.system.wrap(self.system.position[i] \
-                        + self.system.velocity[i] * self.dt)
-            self.system.ek[None] += (self.system.velocity[i] ** 2).sum() / 2
+            self.system.position[i] = self.system.position[i] \
+                        + self.system.velocity[i] * self.dt
 
 
 

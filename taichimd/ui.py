@@ -6,32 +6,76 @@ rgb2hex = lambda x: x[0].astype(np.int) * 65536 + x[1].astype(np.int) * 256 + x[
 alpha = lambda c1, c2, z: rgb2hex(np.outer(c1, 1 - z) + np.outer(c2, z))
 
 
+class UIComponent:
+
+    height = 0.05
+    fontsize = 36
+
+    def __init__(self):
+        self.window = None
+        self.pos = (0, 0)
+
+    def show(self):
+        raise NotImplementedError
+
+
+class TemperatureControl(UIComponent):
+
+    height = 0.1
+
+    def show(self):
+        system = self.window.system
+        gui = self.window.gui
+        t_actual = system.get_temp()
+        t_set = system.temperature
+        if gui.event is not None:
+            if gui.event.type == ti.GUI.PRESS and gui.event.key == ti.GUI.UP:
+                t_set = round(t_set + 0.1, 1)
+                system.set_temp(t_set)
+            elif gui.event.type == ti.GUI.PRESS and gui.event.key == ti.GUI.DOWN:
+                if t_set <= 0.15:
+                    t_set /= 2
+                else:
+                    t_set = round(t_set - 0.1, 1)
+                system.set_temp(t_set)
+            gui.event = None
+        color_t = 0xf56060 if abs(t_actual - t_set) > 0.02 else 0x74e662
+        gui.text("T_set = %.3g" % t_set, (self.pos[0], self.pos[1] + 0.05), font_size=self.fontsize, color=0xffffff)
+        gui.text("T_actual = %.3g" % t_actual, self.pos, font_size=self.fontsize, color=color_t)
+
+
+class Printer(UIComponent):
+
+    def __init__(self, name, callback, fmt="%.3f"):
+        self.name = name
+        self.callback = callback
+        self.fmt = fmt
+        super().__init__()
+
+    def show(self):
+        value = self.fmt % self.callback()
+        self.window.gui.text("%s = %s" % (self.name, value), self.pos, font_size=self.fontsize)
+
+
 class GUI:
+
+    left = 0.05
+    bottom = 0.1
 
     def __init__(self, system, renderer):
         self.system = system
         self.gui = ti.GUI("MD", res=WINDOW_SIZE)
         self.renderer = renderer(self.system, self.gui)
         self.play = True
+        self.ycur = self.bottom
+        self.components = []
 
-    def show_temperature(self):
-        t_actual = self.system.get_temp()
-        t_set = self.system.temperature
-        if self.gui.event is not None:
-            if self.gui.event.type == ti.GUI.PRESS and self.gui.event.key == ti.GUI.UP:
-                t_set = round(t_set + 0.1, 1)
-                self.system.set_temp(t_set)
-            elif self.gui.event.type == ti.GUI.PRESS and self.gui.event.key == ti.GUI.DOWN:
-                if t_set <= 0.15:
-                    t_set /= 2
-                else:
-                    t_set = round(t_set - 0.1, 1)
-                self.system.set_temp(t_set)
-            self.gui.event = None
-        color_t = 0xf56060 if abs(t_actual - t_set) > 0.02 else 0x74e662
-        self.gui.text("T_set = %.3g" % t_set, (0.05, 0.2), font_size=36, color=0xffffff)
-        self.gui.text("T_actual = %.3g" % t_actual, (0.05, 0.15), font_size=36, color=color_t)
-
+    def add_component(self, comp):
+        comp.window = self
+        comp.pos = (self.left, self.ycur)
+        self.components.append(comp)
+        self.ycur += comp.height
+        
 
     def show(self, savefile=None):
         self.gui.get_event()
@@ -41,9 +85,8 @@ class GUI:
             self.play = not self.play
             self.gui.event = None
         self.renderer.render()
-        if self.system.temperature > 0:
-            self.show_temperature()
-        self.gui.text("Internal energy = %.3f" % (self.system.energy()), (0.05, 0.1), font_size=36)
+        for comp in ti.static(self.components):
+            comp.show()
         self.gui.show(savefile)
         if not self.gui.running:
             exit()
@@ -88,7 +131,7 @@ class CanvasRenderer(Renderer):
 
 try:
     import taichi_three as t3
-    from taichimd.graphics import MolecularModel
+    from taichimd.graphics import MolecularModel, FalloffLight
     class T3RendererBase(Renderer, t3.common.AutoInit):
 
         radius = 0.15
@@ -131,10 +174,15 @@ try:
             scene.opt = shader
             self.model = MolecularModel(radius=self.radius)
             scene.add_model(self.model)
+            l = self.system.boxlength
+            light = FalloffLight(direction=[l, -l, 2 * l],
+                target=[l/2, l/2, l/2],
+                c1=1.0 / l ** 2,
+                c2=15.0 / l ** 3)
+            scene.add_light(light)
             return scene
 
         def _init(self):
-            self.scene.set_light_dir([1, -1, 6])
             self.model.register(self.system)
 
     class RTRenderer(T3RendererBase):

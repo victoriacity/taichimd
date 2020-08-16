@@ -1,23 +1,20 @@
 import taichi as ti
 import numpy as np
+from .common import *
+from .grid import NeighborList, NeighborTable
 
 @ti.data_oriented
-class ForceField:
+class ForceField(Module):
     
-    def register(self, system):
-        self.system = system
-        return self
-
-    def build(self, system):
-        raise NotImplementedError
-
     def calc_force(self):
         raise NotImplementedError
 
 
-
 @ti.data_oriented
 class ClassicalFF(ForceField):
+
+    mixture = True
+    is_conservative = True
 
     MAX_ATOMTYPE = 32
     MAX_BONDTYPE = 32
@@ -144,6 +141,31 @@ class ClassicalFF(ForceField):
                 self.torsional_params[k] = self.torsional.fill_params(*v)
             self.torsion.from_numpy(np.vstack(self.torsion_np))
 
+    @ti.func
+    def force_nonbond(self, i, j):
+        sys = self.system
+        not_excl = True
+        if ti.static(not sys.is_atomic):
+            not_excl = self.intra[i, j] == 0
+        if i < j and not_excl:
+            d = sys.calc_distance(sys.position[j], sys.position[i])
+            r2 = (d ** 2).sum()
+            itype = sys.type[i]
+            jtype = sys.type[j]
+            params = self.nonbond_params[itype, jtype]
+            uij = self.nonbond(r2, params)
+            if uij != 0.0:
+                sys.ep[None] += uij
+                force = self.nonbond.force(d, r2, params)
+                # += performs atomic add
+                sys.force[i] += force
+                sys.force[j] -= force
+                if ti.static(sys.integrator.requires_hessian):
+                    h = self.nonbond.hessian(d, r2, params)
+                    sys.hessian[i, j] = h
+                    sys.hessian[j, i] = h
+                    sys.hessian[i, i] -= h
+                    sys.hessian[j, j] -= h
 
     @ti.func
     def calc_force(self):
@@ -156,30 +178,20 @@ class ClassicalFF(ForceField):
                 sys.force[i] += self.external.force(sys.position[i])
                 if ti.static(sys.integrator.requires_hessian):
                     sys.hessian[i, i] += self.external.hessian(sys.position[i])
+
         if ti.static(self.nonbond != None):
-            for i, j in ti.ndrange(sys.n_particles, sys.n_particles):
-                not_excl = True
-                if ti.static(not sys.is_atomic):
-                    not_excl = self.intra[i, j] == 0
-                if i < j and not_excl:
-                    d = sys.calc_distance(sys.position[j], sys.position[i])
-                    r2 = (d ** 2).sum()
-                    itype = sys.type[i]
-                    jtype = sys.type[j]
-                    params = self.nonbond_params[itype, jtype]
-                    uij = self.nonbond(r2, params)
-                    if uij != 0.0:
-                        sys.ep[None] += uij
-                        force = self.nonbond.force(d, r2, params)
-                        # += performs atomic add
-                        sys.force[i] += force
-                        sys.force[j] -= force
-                        if ti.static(sys.integrator.requires_hessian):
-                            h = self.nonbond.hessian(d, r2, params)
-                            sys.hessian[i, j] = h
-                            sys.hessian[j, i] = h
-                            sys.hessian[i, i] -= h
-                            sys.hessian[j, j] -= h
+            #ti.block_dim(64)
+            if ti.static(sys.grid is not None and isinstance(sys.grid, NeighborList)):
+                ti.block_dim(128)
+                for i in sys.n_neighbors:
+                    for j in range(sys.n_neighbors[i]):
+                        self.force_nonbond(i, sys.neighbors[i, j])
+            elif ti.static(sys.grid is not None and isinstance(sys.grid, NeighborTable)):
+                for i, j in sys.neighbors:
+                    self.force_nonbond(i, j)
+            else:
+                for i, j in ti.ndrange(sys.n_particles, sys.n_particles):
+                    self.force_nonbond(i, j)
  
         if ti.static(not sys.is_atomic and self.bonded != None):
             for x in range(self.nbond):
