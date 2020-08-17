@@ -1,19 +1,14 @@
 import taichi as ti
 import taichi_three as t3
 import taichi_glsl as ts
+from .consts import *
 import math
 import numpy as np
 
 @ti.data_oriented
 class MolecularModel(t3.common.AutoInit):
 
-    colors = [[1, 1, 1],
-              [1, 1, 1],
-              [0.5, 0.5, 0.5],
-              [1, 0, 0],
-              [0, 1, 0],
-              [0, 0, 1],
-            ]
+    colors = COLOR_MOLECULES
 
     AO = False
 

@@ -1,5 +1,6 @@
 import taichi as ti
 import numpy as np
+from .consts import *
 
 WINDOW_SIZE = 1280
 rgb2hex = lambda x: x[0].astype(np.int) * 65536 + x[1].astype(np.int) * 256 + x[2].astype(np.int)
@@ -75,6 +76,9 @@ class GUI:
         comp.pos = (self.left, self.ycur)
         self.components.append(comp)
         self.ycur += comp.height
+
+    def set_colors(self, colors):
+        self.renderer.set_colors(colors)
         
 
     def show(self, savefile=None):
@@ -96,6 +100,8 @@ class GUI:
 
 class Renderer:
 
+    colors = None
+
     def __init__(self, system, gui):
         self.system = system
         self.gui = gui
@@ -103,18 +109,24 @@ class Renderer:
     def render(self, positions):
         raise NotImplementedError
 
+    def set_colors(self, colors):
+        pass
+
 class CanvasRenderer(Renderer):
     camera = 1
-    radius = 8
+    radius = 2
     bg = np.array([17, 47, 65])
     circ = np.array([122, 200, 225])
     bond = np.array([62, 165, 45])
-
+    
     def render(self):
         self.gui.clear(rgb2hex(self.bg))
         positions = self.system.position.to_numpy() \
             / self.system.boxlength
-        z = positions[:, 2]
+        if DIM == 2:
+            z = np.ones(positions.shape[0])
+        else:
+            z = positions[:, 2]
         xy = positions[:, :2]
         z_order = np.argsort(z)
         sizes = self.radius * self.camera / (self.camera + (1 - z))
@@ -133,18 +145,17 @@ try:
     import taichi_three as t3
     from taichimd.graphics import MolecularModel, FalloffLight
     class T3RendererBase(Renderer, t3.common.AutoInit):
-
         radius = 0.15
 
         def __init__(self, system, gui):
+            
             super().__init__(system, gui)
             boxlength = system.boxlength
             if hasattr(self.system.forcefield, "nonbond_params_d"):
                 epsilon = self.system.forcefield.nonbond_params_d[1][0]
             else:
-                epsilon = boxlength / 10
+                epsilon = boxlength / 50
             self.radius = T3RendererBase.radius * epsilon
-            
             self.scene = self._scene()
             self.camera = t3.Camera(res=(WINDOW_SIZE, WINDOW_SIZE), pos=[boxlength/2, boxlength/2, -boxlength], 
                             target=[boxlength/2, boxlength/2, boxlength/2], up=[0, 1, 0])
@@ -177,10 +188,13 @@ try:
             l = self.system.boxlength
             light = FalloffLight(direction=[l, -l, 2 * l],
                 target=[l/2, l/2, l/2],
-                c1=1.0 / l ** 2,
-                c2=15.0 / l ** 3)
+                c1=0.1 / l ** 2,
+                c2=0.1 / l ** 3)
             scene.add_light(light)
             return scene
+
+        def set_colors(self, colors):
+            MolecularModel.colors = colors
 
         def _init(self):
             self.model.register(self.system)

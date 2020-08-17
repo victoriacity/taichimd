@@ -1,6 +1,6 @@
 import taichi as ti
 import numpy as np
-from .ui import GUI, TemperatureControl
+from .ui import GUI, TemperatureControl, MDRenderer
 from .consts import *
 from .integrator import VerletIntegrator
 from .common import *
@@ -18,17 +18,19 @@ class Boundary:
 
 @ti.data_oriented
 class Simulation:
+
+    is_atomic = True
     
     '''
     A general simulation class.
     '''
     def __init__(self, n_particles, 
-                forcefield, integrator,
+                integrator,
+                forcefield=None,
                 boundary=Boundary.FREE,
                 boxlength=1,
                 grid=None,
-                renderer=None):
-
+                renderer=MDRenderer):
         self.n_particles = n_particles
         self.boundary = boundary
         self.boxlength = boxlength
@@ -38,10 +40,16 @@ class Simulation:
         if ti.static(grid is not None):
             self.grid_snode = None
         self.modules = []
-        
+        self.analyzers = []
+
+        self.fields = []
+        self.initvals = []
+
         self.add_attr("position")
         self.add_attr("velocity")
+        self.add_attr("type", dims=(), dtype=ti.i32)
         self.integrator = self.add_module(integrator)
+        self.dt = integrator.dt
 
         if self.integrator.requires_force:
             self.add_attr("force")
@@ -51,9 +59,7 @@ class Simulation:
             self.pair_snode.place(self.hessian)
 
         self.forcefield = self.add_module(forcefield)
-        if self.forcefield.mixture:
-            self.add_attr("type", dims=(), dtype=ti.i32)
-        if self.forcefield.is_conservative:
+        if self.forcefield and self.forcefield.is_conservative:
             self.add_var("ep")
         
         self.grid = self.add_module(grid)
@@ -69,15 +75,15 @@ class Simulation:
         module.register(self)
         self.modules.append(module)
         if issubclass(type(module), Analyzer):
-            if not hasattr(self, "analyzers"):
-                self.analyzers = []
             self.analyzers.append(module)
         return module
 
-    def add_layout(self, name, snode, dims=(), dtype=ti.f32):
+    def add_layout(self, name, snode, dims=(), dtype=ti.f32, init=0):
         ti_field = create_field(dims, dtype)
         setattr(self, name, ti_field)
         snode.place(ti_field)
+        self.fields.append(ti_field)
+        self.initvals.append(init)
        
     def add_attr(self, name, dims=(DIM,), dtype=ti.f32):
         self.add_layout(name, self.particle_snode, dims, dtype)
@@ -97,21 +103,44 @@ class Simulation:
         for m in ti.static(self.modules):
             m.build()
         self.built = True
-        pass
+        if hasattr(self, "pos_np"):
+            from_numpy_chk(self.position, self.pos_np)
+        if hasattr(self, "vel_np"):
+            from_numpy_chk(self.velocity, self.vel_np)
+        if hasattr(self, "type_np"):
+            from_numpy_chk(self.type, self.type_np)
+        print("[TaichiMD] Simulation system has been built")
 
     def fill_composition(self):
-        if self.forcefield.mixture:
-            self.type.fill(0)
+        self.type.fill(0)
+
+    def init_random(self, center=(0.5, 0.5, 0.5), length=1,
+            start=0, end=None, inittype=None):
+        end = end or self.n_particles
+        l = self.boxlength
+        if not hasattr(self, "pos_np"):
+            self.pos_np = np.random.rand(self.n_particles, DIM) * l
+        n = end - start
+        center = np.array(center).reshape(-1, DIM)
+        origin = center - length / 2
+        self.pos_np[start:end, :] = np.random.rand(n, DIM) * length + origin
+        if inittype is not None:
+            if not hasattr(self, "type_np"):
+                self.type_np = np.zeros(self.n_particles).astype(np.int)
+            self.type_np[start:end] = inittype
+        
+
+
 
     '''
     Runs the simulation.
     '''
-    def run(self, nframe=0, irender=10, save=False):
+    def run(self, nframe=0, irender=10, save=False, pause=False):
         if not self.built:
-            raise Exception("System has not been initialized!")
+            self.build()
         if nframe == 0:
             nframe = int(1e12)
-        play = True
+        play = not pause
         for i in range(nframe):
             if play:
                 self.step()
@@ -120,6 +149,8 @@ class Simulation:
                     play = self.gui.show("frame%i.png" % (i // irender)) 
                 else:
                     play = self.gui.show()
+                if pause:
+                    play = not play
 
     @ti.kernel
     def step(self):
@@ -127,15 +158,17 @@ class Simulation:
         self.calc_force()
         self.integrator.poststep()
         self.apply_boundary()
-        for analyzer in ti.static(self.analyzers):
-            analyzer.use()
+        if ti.static(self.analyzers):
+            for analyzer in ti.static(self.analyzers):
+                analyzer.use()
         
 
     @ti.func
     def calc_force(self):
         if ti.static(self.grid is not None):
             self.grid.use()
-        self.forcefield.calc_force()
+        if ti.static(self.forcefield is not None):
+            self.forcefield.calc_force()
 
     '''
     Calculates distance with periodic boundary conditions
@@ -199,7 +232,7 @@ class MolecularDynamics(Simulation):
         else:
             grid = None
 
-        super().__init__(n_particles, forcefield, integrator(dt),
+        super().__init__(n_particles, integrator(dt), forcefield, 
             boundary=Boundary.PERIODIC,
             grid=grid,
             boxlength=float(boxlength), renderer=renderer)

@@ -8,8 +8,10 @@ class Integrator(Module):
     requires_force = True
     requires_hessian = False
 
-    def __init__(self, dt):
+    def __init__(self, dt, requires_force=None):
         self.dt = dt
+        if requires_force is not None:
+            self.requires_force = requires_force
 
     def register(self, system):
         self.system = system
