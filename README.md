@@ -10,12 +10,15 @@ Interactive, GPU-accelerated Molecular (& Macroscopic) Dynamics using the Taichi
 * To provide a platform for rapid implementation of novel simulation algorithms and machine-learned simulations
 
 ## Examples
+
+### Molecular simulation examples
 `python run_examples.py [-h] example ensemble`
 
 positional arguments:
 ```
-  example     [lj | ho | chain]
+  example     [lj | biglj | ho | chain | pr
               lj: Lenneard-Jones system with 4096 molecules, in reduced units; 
+              biglj: Lenneard-Jones system with 0.5 million molecules, in reduced units\n\
               ho: Harmonic oscillator around the center of the simulation box; 
               chain: 5 harmonic-bond chain molecules with 100 atoms each, bond bending and torsion not included, in real
               units
@@ -25,6 +28,10 @@ positional arguments:
               NVE ensemble with Verlet integration or NVT ensemble with Nose-Hoover thermostat
 ```
 optional arguments: `-h, --help  show help message and exit`
+
+### Macroscopic simulation examples
+`mpm28.py`: The MPM88 Taichi example (fluid simulation) in 3 dimensions.
+`mpm48.py`: The MPM99 Taichi example (fluid, jelly and snow) in 3 dimensions.
 
 
 ## Graphics
@@ -38,10 +45,9 @@ If taichi_three was not imported correctly, the example simualtions will use the
 * Add support for torsional potentials as cosine series
 * Add Coulomb forces between charged atoms
 ### Acceleration algorithms
-* Implement grid-based neighbor lists for large systems
 * Implement Ewald summation and/or fast multipole method for long-range forces (Coulomb)
 ### Macroscopic forces
 * Implement gravity and wall boundaries
-* Incorporate macroscopic particle simulation algorithms (SPH, MPM, etc.)
+* Incorporate macroscopic particle simulation algorithms (SPH, etc.)
 * Incorporate agent-based simulation algorithms (crowd simulation, particle swarm) and optimization-based integrators
 
