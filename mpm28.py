@@ -10,7 +10,7 @@ class MPMFluidGrid(APIC):
         return ti.Matrix.identity(ti.f32, DIM) * stress + self.mass * self.system.C[i]
     @ti.func
     def g2p(self, i, X):
-        super(MPMGrid, self).g2p(i, X)
+        super(MPMFluidGrid, self).g2p(i, X)
         self.system.J[i] *= 1 + self.system.dt * self.system.C[i].trace()
         
 ti.init(arch=ti.cuda)
