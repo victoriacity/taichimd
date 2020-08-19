@@ -3,10 +3,11 @@ Interactive, GPU-accelerated Molecular (& Macroscopic) Dynamics using the Taichi
 
 **The TaichiMD package is still in a very early stage and is undergoing constant development.**
 
-![](preview.gif)
+![](propane.gif)![](mpm99.gif)
+
 ## Goals
 * To extend capabilities of the Taichi programming language in computer graphics to molecular simulation education and research
-* To achieve interactive, real-time molecular dynamics simulations accelerated by GPUs
+* To achieve interactive, real-time particle-based simulations accelerated by GPUs
 * To provide a platform for rapid implementation of novel simulation algorithms and machine-learned simulations
 
 ## Examples
