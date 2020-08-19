@@ -36,9 +36,9 @@ optional arguments: `-h, --help  show help message and exit`
 
 
 ## Graphics
-TaichiMD mainly utilizes the [`taichi_three`](https://github.com/taichi-dev/taichi_three/tree/dev) (**0.0.3** or higher) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (current latest version on PyPI is 0.0.2), please download the package from the **dev branch** of taichi_three repository.
+TaichiMD mainly utilizes my *experimental version* of [`taichi_three`](https://github.com/victoriacity/taichi_three) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (0.0.3 with multiple light support, point lights, and multiple framebuffers), please download the package from the my fork of taichi_three repository.
 
-If taichi_three was not imported correctly, the example simualtions will use the Taichi GUI canvas for graphics.
+If taichi_three was not imported correctly, the example simulations will use the Taichi GUI canvas for graphics.
 
 
 ## Future work
