@@ -1,8 +1,9 @@
+from datetime import datetime
 import taichi as ti
 import numpy as np
 from .consts import *
 
-WINDOW_SIZE = 1280
+WINDOW_SIZE = 1024
 rgb2hex = lambda x: x[0].astype(np.int) * 65536 + x[1].astype(np.int) * 256 + x[2].astype(np.int)
 alpha = lambda c1, c2, z: rgb2hex(np.outer(c1, 1 - z) + np.outer(c2, z))
 
@@ -39,7 +40,6 @@ class TemperatureControl(UIComponent):
                 else:
                     t_set = round(t_set - 0.1, 1)
                 system.set_temp(t_set)
-            gui.event = None
         color_t = 0xf56060 if abs(t_actual - t_set) > 0.02 else 0x74e662
         gui.text("T_set = %.3g" % t_set, (self.pos[0], self.pos[1] + 0.05), font_size=self.fontsize, color=0xffffff)
         gui.text("T_actual = %.3g" % t_actual, self.pos, font_size=self.fontsize, color=color_t)
@@ -57,6 +57,24 @@ class Printer(UIComponent):
         value = self.fmt % self.callback()
         self.window.gui.text("%s = %s" % (self.name, value), self.pos, font_size=self.fontsize)
 
+class Toggler(UIComponent):
+
+    def __init__(self, name, key, toggle_func, getter, fmt="%s"):
+        self.name = name
+        self.toggle = toggle_func
+        self.getter = getter
+        self.fmt = fmt
+        self.key = key
+        super().__init__()
+
+    def show(self):
+        gui = self.window.gui
+        if gui.event is not None:
+            if gui.event.type == ti.GUI.PRESS and gui.event.key == self.key:
+                self.toggle()
+        value = self.fmt % self.getter()
+        self.window.gui.text("%s = %s" % (self.name, value), self.pos, font_size=self.fontsize)
+
 
 class GUI:
 
@@ -65,11 +83,13 @@ class GUI:
 
     def __init__(self, system, renderer):
         self.system = system
+        system.gui = self
         self.gui = ti.GUI("MD", res=WINDOW_SIZE)
-        self.renderer = renderer(self.system, self.gui)
         self.play = True
         self.ycur = self.bottom
         self.components = []
+        self.renderer = renderer(self.system, self.gui)
+        self.is_recording = False
 
     def add_component(self, comp):
         comp.window = self
@@ -88,15 +108,34 @@ class GUI:
                 and self.gui.event.key == ti.GUI.SPACE:
             self.play = not self.play
             self.gui.event = None
-        self.renderer.render()
+        img = self.renderer.render()
+        if self.is_recording and img:
+            self.recorder.write_frame(img.to_numpy())
         for comp in ti.static(self.components):
             comp.show()
+        self.gui.event = None
         self.gui.show(savefile)
         if not self.gui.running:
             exit()
         return self.play
-        
 
+    def toggle_record(self):
+        if not hasattr(self, "recorder"):
+            self.recorder = ti.VideoManager(output_dir="./", framerate=24,
+                    automatic_build=False)
+        if not self.is_recording:
+            self.is_recording = True
+        else:
+            self.is_recording = False
+            print("Saving video...")
+            self.recorder.make_video(gif=True, mp4=True)
+            print(f'MP4 video is saved to {self.recorder.get_output_filename(".mp4")}')
+            print(f'GIF video is saved to {self.recorder.get_output_filename(".gif")}')
+
+    def recording_state(self):
+        return self.is_recording
+
+        
 
 class Renderer:
 
@@ -143,9 +182,9 @@ class CanvasRenderer(Renderer):
 
 try:
     import taichi_three as t3
-    from taichimd.graphics import MolecularModel, FalloffLight
+    from taichimd.graphics import MolecularModel, FalloffLight, CookTorrance
     class T3RendererBase(Renderer, t3.common.AutoInit):
-        radius = 0.15
+        radius = 0.3
 
         def __init__(self, system, gui):
             
@@ -155,10 +194,13 @@ try:
                 epsilon = self.system.forcefield.nonbond_params_d[1][0]
             else:
                 epsilon = boxlength / 50
-            self.radius = T3RendererBase.radius * epsilon
+            self.radius = self.radius * epsilon
+            if hasattr(self.system.forcefield, "bonded") and self.system.forcefield.bonded != None:
+                self.radius /= 2
             self.scene = self._scene()
             self.camera = t3.Camera(res=(WINDOW_SIZE, WINDOW_SIZE), pos=[boxlength/2, boxlength/2, -boxlength], 
                             target=[boxlength/2, boxlength/2, boxlength/2], up=[0, 1, 0])
+            self.camera.add_buffer("nbuf")
             self.scene.add_camera(self.camera)   
 
         def render(self):
@@ -166,6 +208,7 @@ try:
             self.camera.from_mouse(self.gui)
             self.scene.render()
             self.gui.set_image(self.camera.img)
+            return self.camera.img
 
         def _scene(self):
             raise NotImplementedError
@@ -179,18 +222,30 @@ try:
 
     class MDRenderer(T3RendererBase):
 
+        def __init__(self, system, gui):
+            super().__init__(system, gui)
+            system.gui.add_component(Toggler("Global illumination", 
+                ti.GUI.TAB, self.model.toggle_gi, self.model.get_enable_gi))
+            system.gui.add_component(Toggler("Video recording", 
+                "r", system.gui.toggle_record, system.gui.recording_state))
+
         def _scene(self):
             scene = t3.Scene()
-            shader = t3.Shading(lambert=0.8, blinn_phong=0.3, shineness=5)
+            shader = CookTorrance()
             scene.opt = shader
             self.model = MolecularModel(radius=self.radius)
             scene.add_model(self.model)
             l = self.system.boxlength
-            light = FalloffLight(direction=[l, -l, 2 * l],
-                target=[l/2, l/2, l/2],
-                c1=0.1 / l ** 2,
-                c2=0.1 / l ** 3)
+            c1, c2 = 0.1 / l ** 2, 0.1 / l ** 3
+            #light = FalloffLight(direction=[l, -l, 2 * l],
+            #    target=[l/2, l/2, l/2], c1=c1, c2=c2
+            #    follow_camera=False)
+            light = t3.PointLight([-1.5*l, 1.5*l, -1.2*l],
+                c1=c1, c2=c2)
             scene.add_light(light)
+            sun = t3.Light([-l, -l, 4*l],color=[0.75, 0.75, 0.75])
+            scene.add_light(sun)
+
             return scene
 
         def set_colors(self, colors):

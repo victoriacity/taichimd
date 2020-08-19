@@ -41,7 +41,7 @@ class Simulation:
             self.grid_snode = None
         self.modules = []
         self.analyzers = []
-
+        self.grids = []
         self.fields = []
         self.initvals = []
 
@@ -62,7 +62,11 @@ class Simulation:
         if self.forcefield and self.forcefield.is_conservative:
             self.add_var("ep")
         
-        self.grid = self.add_module(grid)
+        if type(grid) == list:
+            for g in grid:
+                self.add_module(g)
+        else:
+            self.add_module(grid)
 
         # spawns GUI
         if renderer:
@@ -76,6 +80,8 @@ class Simulation:
         self.modules.append(module)
         if issubclass(type(module), Analyzer):
             self.analyzers.append(module)
+        elif issubclass(type(module), Grid):
+            self.grids.append(module)
         return module
 
     def add_layout(self, name, snode, dims=(), dtype=ti.f32, init=0):
@@ -165,8 +171,9 @@ class Simulation:
 
     @ti.func
     def calc_force(self):
-        if ti.static(self.grid is not None):
-            self.grid.use()
+        if ti.static(self.grids):
+            for g in ti.static(self.grids):
+                g.use()
         if ti.static(self.forcefield is not None):
             self.forcefield.calc_force()
 
@@ -236,6 +243,7 @@ class MolecularDynamics(Simulation):
             boundary=Boundary.PERIODIC,
             grid=grid,
             boxlength=float(boxlength), renderer=renderer)
+
         # molecule table
         if not self.is_atomic:
             self.molecule_snode = ti.root.dense(ti.i, self.n_molecules)

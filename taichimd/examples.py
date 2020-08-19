@@ -19,6 +19,20 @@ def ljsystem(n, rho, temp, dt, integrator, gui=True, use_grid=False):
     md.grid_initialize()
     return md
 
+
+def ljmixture(n, rho, temp, dt, integrator, gui=True, use_grid=False):
+    boxlength = (n / rho) ** (1 / DIM)
+    mol1 = Molecule(0)
+    mol2 = Molecule(1)
+    mol3 = Molecule(2)
+    ff = ClassicalFF(nonbond=LennardJones(rcut=2.5))
+    ff.set_params(nonbond={0:[1.0,1.0], 1:[1.5, 1.3], 2:[0.75, 0.9]})
+    md = MolecularDynamics({mol1: n//3, mol2:n//3, mol3: n - 2*n//3}, boxlength, dt, ff,
+        integrator=integrator, use_grid=use_grid, temperature=temp,
+        renderer=MDRenderer if gui else None)
+    md.grid_initialize()
+    return md
+
 def oscillator(dt, integrator, gui=True):
     n = 1
     boxlength = 10

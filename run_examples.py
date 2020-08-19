@@ -2,11 +2,13 @@ import os, sys
 import taichi as ti
 sys.path.append(os.getcwd())
 from taichimd.examples import *
+from taichimd import COLOR_MOLECULES
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run taichimd examples')
-    parser.add_argument('example', type=str, help='[lj | ho | chain]\n\
+    parser.add_argument('example', type=str, help='[lj | mixlj | biglj | ho | chain | pr]\n\
                     lj: Lenneard-Jones system with 4096 molecules, in reduced units;\n\
+                    mixlj: 3-component Lenneard-Jones mixture with 6000 molecules, in reduced units;\n\
                     biglj: Lenneard-Jones system with 0.5 million molecules, in reduced units\n\
                     ho: Harmonic oscillator around the center of the simulation box;\n\
                     chain: 5 harmonic-bond chain molecules with 100 atoms each,\
@@ -31,6 +33,9 @@ if __name__ == "__main__":
     irender = 5
     if args.example == 'lj':
         md = ljsystem(4096, 0.1, 1.5, 0.01, integrator)
+    elif args.example == 'mixlj':
+        COLOR_MOLECULES = [[0.65, 0, 0], [0, 0.6, 0.1], [0.05, 0.05, 0.65]]
+        md = ljmixture(6000, 0.1, 1.5, 0.01, integrator, use_grid=True)
     elif args.example == 'biglj':
         try:
             ti.init(arch=ti.cuda, device_memory_GB=4)
@@ -44,6 +49,7 @@ if __name__ == "__main__":
     elif args.example == 'chain':
         md = chain(10, 573, 0.0005, integrator)
     elif args.example == 'pr':
+        COLOR_MOLECULES[2] = [0.02, 0.75, 0.86]
         md = propane(512, 423, 0.001, integrator)
     else:
         raise ValueError("Unknown system!")

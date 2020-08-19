@@ -181,12 +181,12 @@ class ClassicalFF(ForceField):
 
         if ti.static(self.nonbond != None):
             #ti.block_dim(64)
-            if ti.static(sys.grid is not None and isinstance(sys.grid, NeighborList)):
+            if ti.static(sys.grids is not None and hasattr(sys, "n_neighbors")):
                 ti.block_dim(128)
                 for i in sys.n_neighbors:
                     for j in range(sys.n_neighbors[i]):
                         self.force_nonbond(i, sys.neighbors[i, j])
-            elif ti.static(sys.grid is not None and isinstance(sys.grid, NeighborTable)):
+            elif ti.static(sys.grids is not None and hasattr(sys, "neighbors")):
                 for i, j in sys.neighbors:
                     self.force_nonbond(i, j)
             else:

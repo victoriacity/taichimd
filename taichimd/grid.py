@@ -67,37 +67,41 @@ class Grid(Module):
 class NeighborList(Grid):
 
     dynamics = False
-    max_cell = 64
-    max_neighbors = 256
+    max_cell = 1024
+    max_neighbors = 2048
 
-    def __init__(self, rcut):
+    def __init__(self, rcut=0, gridsize=None):
         self.rcut = rcut
+        self.gridsize = gridsize
 
     def register(self, system):
-        self.gridsize = int(system.boxlength / self.rcut)
+        self.gridsize = self.gridsize or int(system.boxlength / self.rcut)
         return super().register(system)
 
 
     def layout(self):
         self.cell_snode = self.system.grid_snode.dense(ti.indices(DIM), self.max_cell)
         #self.cell_snode = self.get_snode().dynamic(ti.indices(DIM), self.max_cell)
-        self.neighbor_snode = self.system.particle_snode.dense(ti.j, self.max_neighbors)
         #self.neighbor_snode = ti.root.dense(ti.i, self.system.n_particles).dynamic(ti.j, self.max_neighbors)
         self.system.add_field("grid_n_particles", dims=(), dtype=ti.i32)
-        self.system.add_attr("n_neighbors", dims=(), dtype=ti.i32)
         self.system.add_layout("grid_particles", self.cell_snode, dims=(), dtype=ti.i32)
-        self.system.add_layout("neighbors", self.neighbor_snode, dims=(), dtype=ti.i32)
+        if self.rcut > 0:
+            self.system.add_attr("n_neighbors", dims=(), dtype=ti.i32)
+            self.neighbor_snode = self.system.particle_snode.dense(ti.j, self.max_neighbors)
+            self.system.add_layout("neighbors", self.neighbor_snode, dims=(), dtype=ti.i32)
 
     def build(self):
         self.system.grid_particles.fill(0)
-        self.system.neighbors.fill(0)
+        if self.rcut > 0:
+            self.system.neighbors.fill(0)
 
     @ti.func
     def clear(self):
         memset(self.system.grid_n_particles, 0)
         memset(self.system.grid_particles, 0)
-        memset(self.system.neighbors, 0)
-        memset(self.system.n_neighbors, 0)
+        if ti.static(self.rcut > 0):
+            memset(self.system.neighbors, 0)
+            memset(self.system.n_neighbors, 0)
 
     @ti.func
     def p2g(self, i, X):
@@ -107,18 +111,19 @@ class NeighborList(Grid):
         
     @ti.func
     def g2p(self, i, X):
-        n_nb = 0
-        for dX in ti.static(ti.grouped(ti.ndrange(*(((-1, 2),) * DIM)))):
-            I = (X + dX) % self.gridsize # periodic boundary conditions
-            #for j in range(ti.length(self.system.grid_particles.parent(), I)):
-            #    nb = self.system.grid_particles[I, j]
-            #    ti.append(self.system.neighbors.parent(), i, nb)
-            for j in range(self.system.grid_n_particles[I]):
-                nb = self.system.grid_particles[I, j]
-                if i != nb:
-                    self.system.neighbors[i, n_nb] = nb
-                    n_nb += 1
-        self.system.n_neighbors[i] = n_nb
+        if ti.static(self.rcut > 0):
+            n_nb = 0
+            for dX in ti.static(ti.grouped(ti.ndrange(*(((-1, 2),) * DIM)))):
+                I = (X + dX) % self.gridsize # periodic boundary conditions
+                #for j in range(ti.length(self.system.grid_particles.parent(), I)):
+                #    nb = self.system.grid_particles[I, j]
+                #    ti.append(self.system.neighbors.parent(), i, nb)
+                for j in range(self.system.grid_n_particles[I]):
+                    nb = self.system.grid_particles[I, j]
+                    if i != nb:
+                        self.system.neighbors[i, n_nb] = nb
+                        n_nb += 1
+            self.system.n_neighbors[i] = n_nb
        
 
 class NeighborTable(Grid):

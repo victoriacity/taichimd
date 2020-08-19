@@ -1,7 +1,8 @@
 import taichi as ti
-from taichimd import Simulation, MDRenderer, DIM, IDENTITY
+from taichimd import Simulation, MDRenderer, DIM
 from taichimd.grid import APIC, QuadraticKernel
-from taichimd.integrator import ForwardEulerIntegrator
+from taichimd.integrator import ForwardEulerIntegrator as FE
+MDRenderer.radius = 0.2
 
 class MPMGrid(APIC):
     @ti.func
@@ -27,22 +28,21 @@ class MPMGrid(APIC):
         stress = (-self.system.dt * self.vol * 4 * self.inv_dx * self.inv_dx) * stress
         return stress + self.mass * self.system.C[i]
 
-ti.init(arch=ti.cuda)
+ti.init(arch=ti.cuda, device_memory_GB=3)
 dt = 2e-4
-n_particles, n_grid = 65536, 64
+n_particles, n_grid = 32768, 64
 p_vol, p_rho = (0.5 / n_grid)**2, 1
 mpmgrid = MPMGrid(QuadraticKernel(), n_grid, mass=p_vol * p_rho, gravity=50)
 mpmgrid.vol = p_vol
 E, nu = 0.1e4, 0.2 # Young's modulus and Poisson's ratio
 mpmgrid.mu_0, mpmgrid.lambda_0 = E / (2 * (1 + nu)), E * nu / ((1+nu) * (1 - 2 * nu)) # Lame parameters
-sim = Simulation(n_particles, integrator=ForwardEulerIntegrator(dt, False), grid=mpmgrid)
+sim = Simulation(n_particles, integrator=FE(dt, False), grid=mpmgrid)
 sim.add_attr("F", dims=(DIM, DIM), dtype=ti.f32) # affine velocity field, deformation gradient
 sim.add_attr("Jp", dims=(), dtype=ti.f32) # plastic deformation
 sim.gui.set_colors([[6/255, 133/255, 135/255], [237/255, 85/255, 89/255], [238/255, 238/255, 240/255]]) # mpm99 colors
 sim.init_random(center=(0.4, 0.15, 0.7), length=0.2, start=0, end=n_particles//3, inittype=0)
 sim.init_random(center=(0.4, 0.45, 0.7), length=0.2, start=n_particles//3, end=2*n_particles//3, inittype=1)
-sim.init_random(center=(0.4, 0.75, 0.7), length=0.2, start=2*n_particles//3, end=n_particles, inittype=2)
+sim.init_random(center=(0.5, 0.75, 0.7), length=0.2, start=2*n_particles//3, end=n_particles, inittype=2)
 sim.build()
-
-sim.velocity.fill(0); sim.F.fill(IDENTITY); sim.C.fill(0); sim.Jp.fill(1)
-sim.run(irender=20)
+sim.velocity.fill(0); sim.F.fill(((1,0,0),(0,1,0),(0,0,1))); sim.C.fill(0); sim.Jp.fill(1)
+sim.run(irender=10, pause=True)
