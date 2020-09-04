@@ -21,10 +21,10 @@ class MPMGrid(APIC):
             self.system.F[i] = ti.Matrix.identity(ti.f32, DIM)
             self.system.F[i][0, 0] = J
         elif self.system.type[i] == 2:
-            self.system.F[i] = U @ sig @ V.T() # Reconstruct elastic deformation gradient after plasticity
+            self.system.F[i] = U @ sig @ V.transpose() # Reconstruct elastic deformation gradient after plasticity
         stress = ti.Matrix.identity(ti.f32, DIM) * la * J * (J - 1)
         if self.system.type[i] != 0:
-            stress += 2 * self.mu_0 * h * (self.system.F[i] - U @ V.T()) @ self.system.F[i].T()
+            stress += 2 * self.mu_0 * h * (self.system.F[i] - U @ V.transpose()) @ self.system.F[i].transpose()
         stress = (-self.system.dt * self.vol * 4 * self.inv_dx * self.inv_dx) * stress
         return stress + self.mass * self.system.C[i]
 

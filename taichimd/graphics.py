@@ -17,7 +17,7 @@ class MolecularModel(t3.common.AutoInit):
     gi_cutoff = 0.1
 
     def __init__(self, radius):
-        self.L2W = t3.transform.Affine.var(())
+        self.L2W = t3.transform.Affine.field(())
         self.radius = radius
         self.particles = None
         self.box = ti.Vector(3, ti.f32, (16, ))
