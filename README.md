@@ -16,9 +16,10 @@ Interactive, GPU-accelerated Molecular (& Macroscopic) Dynamics using the Taichi
 
 positional arguments:
 ```
-  example     [lj | biglj | ho | chain | pr
+  example     [lj | mixlj | biglj | ho | chain | pr]
               lj: Lenneard-Jones system with 4096 molecules, in reduced units; 
-              biglj: Lenneard-Jones system with 0.5 million molecules, in reduced units\n\
+              biglj: Lenneard-Jones system with 0.26 million molecules, in reduced units;
+              mixlj: 3-component Lenneard-Jones mixture with 6000 molecules, in reduced units;
               ho: Harmonic oscillator around the center of the simulation box; 
               chain: 5 harmonic-bond chain molecules with 100 atoms each, bond bending and torsion not included, in real
               units
@@ -35,7 +36,7 @@ optional arguments: `-h, --help  show help message and exit`
 
 
 ## Graphics
-TaichiMD mainly utilizes the [`taichi_three`](https://github.com/taichi-dev/taichi_three/tree/dev) (**0.0.3** or higher) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (current latest version on PyPI is 0.0.2), please download the package from the **dev branch** of taichi_three repository.
+TaichiMD mainly utilizes the [`taichi_three`](https://github.com/victoriacity/taichi_three/) (**0.0.4** or higher) package for rendering graphics. Currently, the experimental version of taichi_three (linked version) supporting multiple render targets is required for rendering global illumination.
 
 If taichi_three was not imported correctly, the example simualtions will use the Taichi GUI canvas for graphics.
 

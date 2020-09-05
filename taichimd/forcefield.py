@@ -54,7 +54,7 @@ class ClassicalFF(ForceField):
         # initialize data structures
         if ti.static(self.nonbond != None):
             self.nonbond_params = ti.Vector(self.nonbond.n_params, dt=ti.f32)
-            ti.root.bitmasked(ti.ij, (self.MAX_ATOMTYPE, self.MAX_ATOMTYPE)).place(self.nonbond_params)
+            ti.root.dense(ti.ij, (self.MAX_ATOMTYPE, self.MAX_ATOMTYPE)).place(self.nonbond_params)
         if ti.static(not system.is_atomic and self.bonded != None):
             self.bond_np = []
             self.bond = ti.Vector(3, dt=ti.i32)
