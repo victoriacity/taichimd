@@ -3,10 +3,11 @@ Interactive, GPU-accelerated Molecular (& Macroscopic) Dynamics using the Taichi
 
 **The TaichiMD package is still in a very early stage and is undergoing constant development.**
 
-![](preview.gif)
+![](propane.gif)![](mpm99.gif)
+
 ## Goals
 * To extend capabilities of the Taichi programming language in computer graphics to molecular simulation education and research
-* To achieve interactive, real-time molecular dynamics simulations accelerated by GPUs
+* To achieve interactive, real-time particle-based simulations accelerated by GPUs
 * To provide a platform for rapid implementation of novel simulation algorithms and machine-learned simulations
 
 ## Examples
@@ -36,9 +37,9 @@ optional arguments: `-h, --help  show help message and exit`
 
 
 ## Graphics
-TaichiMD mainly utilizes the [`taichi_three`](https://github.com/victoriacity/taichi_three/) (**0.0.4** or higher) package for rendering graphics. Currently, the experimental version of taichi_three (linked version) supporting multiple render targets is required for rendering global illumination.
+TaichiMD mainly utilizes my *experimental version* of [`taichi_three`](https://github.com/victoriacity/taichi_three) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (0.0.4 with multiple light support, point lights, and multiple render targets), please download the package from the my fork of taichi_three repository.
 
-If taichi_three was not imported correctly, the example simualtions will use the Taichi GUI canvas for graphics.
+If taichi_three was not imported correctly, the example simulations will use the Taichi GUI canvas for graphics.
 
 
 ## Future work
