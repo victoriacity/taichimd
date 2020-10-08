@@ -95,8 +95,8 @@ class MolecularModel(t3.common.AutoInit):
                         ts.normalize(pos), light, c_floor)
                     color += light_color
                 camera.img[X] = c_sky * (1 - f) + color * f
-                camera.nbuf[X] = n
-                camera.zbuf[X] = 1 / pos.z
+                camera.fb['nbuf'][X] = n
+                camera.fb['idepth'][X] = 1 / pos.z
 
     @ti.func
     def render_bonds(self, camera):
@@ -122,11 +122,11 @@ class MolecularModel(t3.common.AutoInit):
             if self.enable_gi[None] == 0:
                 continue
             # use an additional normal buffer at this time        
-            if camera.zbuf[X] > 0:
-                z = 1 / camera.zbuf[X]
+            if camera.fb['idepth'][X] > 0:
+                z = 1 / camera.fb['idepth'][X]
                 pos = cook_coord(camera, ti.cast(ti.Vector([X.x, X.y, z]), ti.f32))
                 pos_world = camera.trans_pos(pos)
-                norm_world = camera.trans_dir(camera.nbuf[X])
+                norm_world = camera.trans_dir(camera.fb['nbuf'][X])
                 dy = pos_world[1] - floor_y
                 ftot = 0.0
                 if dy > 0:
@@ -272,7 +272,7 @@ def render_particle(model, camera, vertex, radius, basecolor):
             dz = ti.sqrt(radius**2 - dw2)
             n = ti.Vector([dw.x, dw.y, -dz])
             zindex = 1 / (a.z - dz)
-            if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
+            if zindex >= ti.atomic_max(camera.fb['idepth'][X], zindex):
                 normal = ts.normalize(n)
                 view = ts.normalize(a + n)
                 color = get_ambient(camera, normal, view) * basecolor
@@ -280,7 +280,7 @@ def render_particle(model, camera, vertex, radius, basecolor):
                     light_color = scene.opt.render_func(a + n, normal, view, light, basecolor)
                     color += light_color
                 camera.img[X] = color
-                camera.nbuf[X] = normal
+                camera.fb['nbuf'][X] = normal
 
 @ti.func
 def render_cylinder(model, camera, v1, v2, radius, c1, c2):
@@ -316,7 +316,7 @@ def render_cylinder(model, camera, v1, v2, radius, c1, c2):
             n = ti.Vector([dw.x, dw.y, -dz])
             zindex = 1 / (proj.z - dz)
 
-            if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
+            if zindex >= ti.atomic_max(camera.fb['idepth'][X], zindex):
                 basecolor = c1 if t < 0.5 else c2
                 normal = ts.normalize(n)
                 view = ts.normalize(a + n)
@@ -326,7 +326,7 @@ def render_cylinder(model, camera, v1, v2, radius, c1, c2):
                         view, light, basecolor)
                     color += light_color
                 camera.img[X] = color
-                camera.nbuf[X] = normal
+                camera.fb['nbuf'][X] = normal
 
 @ti.func
 def render_line(camera, p1, p2):
@@ -345,7 +345,7 @@ def render_line(camera, p1, p2):
         if X.x < 0 or X.x >= camera.res[0] or X.y < 0 or X.y >= camera.res[1]:
             continue
         zindex = 1 / (a.z + i * dz)    
-        if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
+        if zindex >= ti.atomic_max(camera.fb['idepth'][X], zindex):
             camera.img[X] = ts.vec3(0, 0.7, 0)
 
 floor_y = 0.01

@@ -200,7 +200,7 @@ try:
             self.scene = self._scene()
             self.camera = t3.Camera(res=(WINDOW_SIZE, WINDOW_SIZE), pos=[boxlength/2, boxlength/2, -boxlength], 
                             target=[boxlength/2, boxlength/2, boxlength/2], up=[0, 1, 0])
-            self.camera.add_buffer("nbuf")
+            self.camera.fb.add_buffer("nbuf", 3)
             self.scene.add_camera(self.camera)   
 
         def render(self):

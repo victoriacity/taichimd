@@ -5,6 +5,7 @@ from .grid import NeighborList, NeighborTable
 
 @ti.data_oriented
 class ForceField(Module):
+    is_conservative = False
     
     def calc_force(self):
         raise NotImplementedError
