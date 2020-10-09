@@ -71,6 +71,8 @@ class Simulation:
         # spawns GUI
         if renderer:
             self.gui = GUI(self, renderer)
+        else:
+            self.gui = None
 
 
     def add_module(self, module):
@@ -84,22 +86,29 @@ class Simulation:
             self.grids.append(module)
         return module
 
-    def add_layout(self, name, snode, dims=(), dtype=ti.f32, init=0):
+    def add_layout(self, name, snode, dims=(), dtype=ti.f32, init=0, requires_grad=False):
         ti_field = create_field(dims, dtype)
         setattr(self, name, ti_field)
-        snode.place(ti_field)
+        if requires_grad:
+            snode.place(ti_field, ti_field.grad)
+        else:
+            snode.place(ti_field)
         self.fields.append(ti_field)
         self.initvals.append(init)
        
-    def add_attr(self, name, dims=(DIM,), dtype=ti.f32):
-        self.add_layout(name, self.particle_snode, dims, dtype)
+    def add_attr(self, name, dims=(DIM,), dtype=ti.f32, layout_row=False, requires_grad=False):
+        if layout_row:
+            row_snode = ti.root.dense(ti.ij, (self.n_particles, *dims))
+            self.add_layout(name, row_snode, (), dtype, requires_grad=requires_grad)
+        else:
+            self.add_layout(name, self.particle_snode, dims, dtype, requires_grad=requires_grad)
 
-    def add_var(self, name, dims=(), dtype=ti.f32):
-        self.add_layout(name, self.variable_snode, dims, dtype)
+    def add_var(self, name, dims=(), dtype=ti.f32, requires_grad=False):
+        self.add_layout(name, self.variable_snode, dims, dtype, requires_grad=requires_grad)
 
-    def add_field(self, name, dims=(DIM,), dtype=ti.f32):
+    def add_field(self, name, dims=(DIM,), dtype=ti.f32, requires_grad=False):
         if ti.static(self.grid_snode is not None):
-            self.add_layout(name, self.grid_snode, dims, dtype)
+            self.add_layout(name, self.grid_snode, dims, dtype, requires_grad=requires_grad)
         else:
             print("Warning: the simulation system is not using grids,"
                 "adding scalar/vector fields will have no effect.")
