@@ -181,9 +181,9 @@ class CanvasRenderer(Renderer):
         self.gui.circles(xy[z_order], radius=sizes[z_order], color=colors[z_order])
 
 try:
-    import taichi_three as t3
+    from taichimd import t3mini as t3
     from taichimd.graphics import MolecularModel, FalloffLight, CookTorrance
-    class T3RendererBase(Renderer, t3.common.AutoInit):
+    class T3RendererBase(Renderer, t3.AutoInit):
         radius = 0.3
 
         def __init__(self, system, gui):
@@ -200,7 +200,7 @@ try:
             self.scene = self._scene()
             self.camera = t3.Camera(res=(WINDOW_SIZE, WINDOW_SIZE), pos=[boxlength/2, boxlength/2, -boxlength], 
                             target=[boxlength/2, boxlength/2, boxlength/2], up=[0, 1, 0])
-            self.camera.fb.add_buffer("nbuf", 3)
+            self.camera.add_buffer("nbuf", 3)
             self.scene.add_camera(self.camera)   
 
         def render(self):
@@ -253,21 +253,9 @@ try:
 
         def _init(self):
             self.model.register(self.system)
-
-    class RTRenderer(T3RendererBase):
-        def _scene(self):
-            scene = t3.SceneRT()
-            self.radius_var = ti.var(ti.f32, self.system.n_particles)
-            return scene
-
-        def _init(self):
-            self.scene.set_light_dir([1, -1, 6])
-            self.radius_var.fill(self.radius)
-            self.scene.add_ball(self.system.position, self.radius_var)        
-
+      
 except ImportError as e:
     print(e)
-    print("Taichi_three (>= 0.0.3) not found, only canvas renderer is available.")
+    print("Failed to import 3D renderer, GUI will fall back to 2D canvas renderer.")
     MDRenderer = CanvasRenderer
-    RTRenderer = CanvasRenderer
         

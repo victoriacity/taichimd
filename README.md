@@ -37,9 +37,7 @@ optional arguments: `-h, --help  show help message and exit`
 
 
 ## Graphics
-TaichiMD mainly utilizes my *experimental version* of [`taichi_three`](https://github.com/victoriacity/taichi_three) package for rendering graphics. To obtain the working version of taichi_three with TaichiMD (0.0.4 with multiple light support, point lights, and multiple render targets), please download the package from the my fork of taichi_three repository.
-
-If taichi_three was not imported correctly, the example simulations will use the Taichi GUI canvas for graphics.
+TaichiMD ships with a miniature static version of [`taichi_three`](https://github.com/taichi-dev/taichi_three) for rendering graphics, which requires the `taichi_glsl` package. If the renderer was not imported correctly, the example simulations will use the Taichi GUI canvas for graphics.
 
 
 ## Future work
