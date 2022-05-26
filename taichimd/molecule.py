@@ -15,7 +15,7 @@ class Molecule:
         self.bond = bond or []
         self.bending = bending or []
         self.torsion = torsion or []
-        self.intra = intra if intra is not None else np.ones((self.natoms, self.natoms), dtype=np.int)
+        self.intra = intra if intra is not None else np.ones((self.natoms, self.natoms), dtype=int)
         self.struc = struc
         if struc is None:
             self._get_struc()

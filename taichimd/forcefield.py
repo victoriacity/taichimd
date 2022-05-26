@@ -54,31 +54,31 @@ class ClassicalFF(ForceField):
                 "any bond structure. Bonding/bending/torsional potentials will not be used.")  
         # initialize data structures
         if ti.static(self.nonbond != None):
-            self.nonbond_params = ti.Vector(self.nonbond.n_params, dt=ti.f32)
+            self.nonbond_params = ti.Vector.field(self.nonbond.n_params, dtype=ti.f32)
             ti.root.dense(ti.ij, (self.MAX_ATOMTYPE, self.MAX_ATOMTYPE)).place(self.nonbond_params)
         if ti.static(not system.is_atomic and self.bonded != None):
             self.bond_np = []
-            self.bond = ti.Vector(3, dt=ti.i32)
-            self.bonded_params = ti.Vector(self.bonded.n_params, dt=ti.f32)
+            self.bond = ti.Vector.field(3, dtype=ti.i32)
+            self.bonded_params = ti.Vector.field(self.bonded.n_params, dtype=ti.f32)
             ti.root.dense(ti.i, self.MAX_BOND 
                     * system.n_particles).place(self.bond)
             ti.root.pointer(ti.i, self.MAX_BONDTYPE).place(self.bonded_params)
         if ti.static(not system.is_atomic and self.bending != None):
             self.bend_np = []
-            self.bend = ti.Vector(4, dt=ti.i32)
-            self.bending_params = ti.Vector(self.bending.n_params, dt=ti.f32)
+            self.bend = ti.Vector.field(4, dtype=ti.i32)
+            self.bending_params = ti.Vector.field(self.bending.n_params, dtype=ti.f32)
             ti.root.dense(ti.i, self.MAX_BEND 
                     * system.n_particles).place(self.bend)
             ti.root.pointer(ti.i, self.MAX_BENDTYPE).place(self.bending_params)
         if ti.static(not system.is_atomic and self.torsional != None):
             self.torsion_np = []
-            self.torsion = ti.Vector(5, dt=ti.i32)
-            self.torsional_params = ti.Vector(self.torsional.n_params, dt=ti.f32)
+            self.torsion = ti.Vector.field(5, dtype=ti.i32)
+            self.torsional_params = ti.Vector.field(self.torsional.n_params, dtype=ti.f32)
             ti.root.dynamic(ti.i, self.MAX_TORSION 
                     * system.n_particles).place(self.torsion)
             ti.root.pointer(ti.i, self.MAX_TORSIONTYPE).place(self.torsional_params)
         if ti.static(not system.is_atomic):
-            self.intra = ti.var(dt=ti.i32) # boolean
+            self.intra = ti.field(dtype=ti.i32) # boolean
             ti.root.bitmasked(ti.ij, (system.n_particles, system.n_particles)).place(self.intra)
         return super().register(system)
 

@@ -9,7 +9,7 @@ DIM =3
 
 PI = 3.14159265358979
 
-#IDENTITY = ti.Matrix(np.eye(DIM, dtype=np.float))
+IDENTITY = ti.Matrix(np.eye(DIM, dtype=float))
 
 COLOR_MOLECULES = [[0.02, 0.85, 0.86],
               [0.8, 0.8, 0.8],

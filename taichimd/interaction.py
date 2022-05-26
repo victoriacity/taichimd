@@ -1,4 +1,3 @@
-from inspect import getargspec
 import taichi as ti
 from .consts import *
 
@@ -8,12 +7,13 @@ class HessianNotImplemented(NotImplementedError):
 class ForceNotImplemented(NotImplementedError):
     pass
 
-
+@ti.data_oriented
 class Interaction:
 
     def fill_params(self, *args):
         return list(args)
 
+@ti.data_oriented
 class ExternalPotential(Interaction):
 
     def __call__(self, r):
@@ -25,31 +25,37 @@ class ExternalPotential(Interaction):
     def hessian(self, r):
         raise HessianNotImplemented
 
-
+@ti.data_oriented
 class QuadraticWell(ExternalPotential):
 
     def __init__(self, k, center):
         self.k = k
         self.center = ti.Vector(center)
 
+    @ti.func
     def __call__(self, r):
         return self.k * ((r - self.center) ** 2).sum() / 2
 
+    @ti.func
     def force(self, r):
         return -self.k * (r - self.center)
 
+    @ti.func
     def hessian(self, r):
         return self.k * IDENTITY
 
+@ti.data_oriented
 class InverseSquare(ExternalPotential):
 
     def __init__(self, k, center):
         self.k = k
         self.center = center
 
+    @ti.func
     def __call__(self, r):
         return self.k / (r - self.center).norm()
 
+    @ti.func
     def force(self, r):
         dr = r - self.center
         dr2 = (dr ** 2).sum()
@@ -59,6 +65,7 @@ class InverseSquare(ExternalPotential):
 '''
 Pair interactions
 '''
+@ti.data_oriented
 class PairInteraction(Interaction):
 
  
@@ -80,6 +87,8 @@ class PairInteraction(Interaction):
         return -4. * r.outer_product(r) * self.second_derivative(r2, args) \
             - 2 * IDENTITY * self.derivative(r2, args)
 
+
+@ti.data_oriented
 class LennardJones(PairInteraction):
     
     n_params = 3
@@ -121,6 +130,8 @@ class LennardJones(PairInteraction):
         return self.fill_params(
             (s_i + s_j) / 2., ti.sqrt(e_i * e_j))
 
+
+@ti.data_oriented
 class Coulomb(PairInteraction):
 
     n_params = 1
@@ -144,6 +155,7 @@ class Coulomb(PairInteraction):
         return 3. * k / (4 * r * r2 * r2)
 
 
+@ti.data_oriented
 class HarmonicPair(PairInteraction):
 
     n_params = 2
@@ -165,7 +177,7 @@ class HarmonicPair(PairInteraction):
         r = ti.sqrt(r2)
         return k * r0 / (2 * r * r2)
 
-
+@ti.data_oriented
 class ParabolicPotential(PairInteraction):
 
     n_params = 1

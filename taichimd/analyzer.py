@@ -15,7 +15,7 @@ class EnergyAnalyzer(Analyzer):
         self.ek = system.ek
         self.has_ep = hasattr(system, "ep")
         if ti.static(system.gui is not None):
-            system.gui.add_component(Printer("Internal energy", self.energy))
+            system.gui.add_component(Printer("Internal energy", self.energy_py))
         return super().register(system)
 
     @ti.func
@@ -31,8 +31,14 @@ class EnergyAnalyzer(Analyzer):
         self.use()
         return self.energy()
 
-    @ti.pyfunc
+    @ti.func
     def energy(self):
+        if ti.static(self.has_ep):
+            return self.system.ek[None] + self.system.ep[None]
+        else:
+            return self.ek[None]
+
+    def energy_py(self):
         if ti.static(self.has_ep):
             return self.system.ek[None] + self.system.ep[None]
         else:

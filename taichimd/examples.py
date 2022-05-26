@@ -62,7 +62,7 @@ def chain(nchain, temp, dt, integrator, gui=True):
     # exclude intramolecular interaction when
     # two atoms are less than 4 bonds apart
     adj = np.eye(lchain, k=1) + np.eye(lchain, k=-1)
-    intra = (adj + adj@adj + adj@adj@adj).astype(np.bool)
+    intra = (adj + adj@adj + adj@adj@adj).astype(bool)
     
     mol = Molecule([1] * lchain, 
         bond=[[1, i, i+1] for i in range(lchain - 1)],

@@ -8,7 +8,7 @@ https://github.com/victoriacity/taichi_three/tree/279e7310bf3935766416c27f762760
 Requires taichi_glsl package.
 '''
 import taichi as ti
-import taichi_glsl as ts
+from taichi.math import *
 import math
 
 '''
@@ -64,7 +64,7 @@ class Light(AutoInit):
 
     @ti.func
     def get_dir(self, pos):
-        return self.viewdir
+        return self.viewdir[None]
 
     @ti.func
     def set_view(self, camera):
@@ -82,9 +82,9 @@ class PointLight(Light):
             self.c2 = c2
         self.pos_py = position
         self.color_py = color or [1, 1, 1] 
-        self.pos = ti.Vector(3, ti.float32, ())
-        self.color = ti.Vector(3, ti.float32, ())
-        self.viewpos = ti.Vector(3, ti.float32, ())
+        self.pos = ti.Vector.field(3, ti.float32, ())
+        self.color = ti.Vector.field(3, ti.float32, ())
+        self.viewpos = ti.Vector.field(3, ti.float32, ())
 
     def _init(self):
         self.pos[None] = self.pos_py
@@ -101,7 +101,7 @@ class PointLight(Light):
 
     @ti.func
     def get_dir(self, pos):
-        return ts.normalize(self.viewpos[None] - pos)
+        return (self.viewpos[None] - pos).normalized()
 
 
 '''
@@ -166,10 +166,10 @@ class Camera(AutoInit):
         self.buffers = []
         self.add_buffer("img", dim=3, dtype=ti.f32)
         self.add_buffer("zbuf", dim=0, dtype=ti.f32)
-        self.trans = ti.Matrix(3, 3, ti.f32, ())
-        self.pos = ti.Vector(3, ti.f32, ())
-        self.target = ti.Vector(3, ti.f32, ())
-        self.intrinsic = ti.Matrix(3, 3, ti.f32, ())
+        self.trans = ti.Matrix.field(3, 3, ti.f32, ())
+        self.pos = ti.Vector.field(3, ti.f32, ())
+        self.target = ti.Vector.field(3, ti.f32, ())
+        self.intrinsic = ti.Matrix.field(3, 3, ti.f32, ())
         self.type = self.TAN_FOV
         self.fov = math.radians(fov)
 
@@ -293,7 +293,7 @@ class Camera(AutoInit):
             dis = math.sqrt(sum((self.target_py[i] - self.pos_py[i]) ** 2 for i in range(3)))
             fov = self.fov
             ds, dt = ds * fov * sensitivity, dt * fov * sensitivity
-            newdir = ts.vec3(ds, dt, 1).normalized()
+            newdir = vec3(ds, dt, 1).normalized()
             newdir = [sum(self.trans[None][i, j] * newdir[j] for j in range(3))\
                         for i in range(3)]
             if pov:
@@ -325,7 +325,7 @@ class Camera(AutoInit):
             dis = math.sqrt(sum((self.target_py[i] - self.pos_py[i]) ** 2 for i in range(3)))
             fov = self.fov
             ds, dt = ds * fov * sensitivity, dt * fov * sensitivity
-            newdir = ts.vec3(-ds, -dt, 1).normalized()
+            newdir = vec3(-ds, -dt, 1).normalized()
             newdir = [sum(self.trans[None][i, j] * newdir[j] for j in range(3))\
                         for i in range(3)]
             newtarget = [self.pos_py[i] + dis * newdir[i] for i in range(3)]
@@ -361,4 +361,4 @@ class Camera(AutoInit):
             pos[1] /= abs(pos[2])
         else:
             raise NotImplementedError("Curvilinear projection matrix not implemented!")
-        return ts.vec2(pos[0], pos[1])
+        return vec2(pos[0], pos[1])

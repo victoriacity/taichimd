@@ -28,7 +28,7 @@ class TemperatureControl(UIComponent):
     def show(self):
         system = self.window.system
         gui = self.window.gui
-        t_actual = system.get_temp()
+        t_actual = system.get_temp_py()
         t_set = system.temperature
         if gui.event is not None:
             if gui.event.type == ti.GUI.PRESS and gui.event.key == ti.GUI.UP:

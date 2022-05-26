@@ -76,9 +76,9 @@ class NVTIntegrator(VerletIntegrator):
 
 
     def register(self, system):
-        self.temp = ti.var(dt=ti.f64, shape=())
-        self.xi = ti.var(dt=ti.f64, shape=2)
-        self.vxi = ti.var(dt=ti.f64, shape=2)
+        self.temp = ti.field(dtype=ti.f64, shape=())
+        self.xi = ti.field(dtype=ti.f64, shape=2)
+        self.vxi = ti.field(dtype=ti.f64, shape=2)
         super().register(system)
 
     def build(self):
@@ -208,9 +208,9 @@ class ImplicitIntegrator(Integrator):
 
     def __init__(self, system, dt):
         super().__init__(system, dt)
-        self.vbefore = ti.Vector(DIM, dt=ti.f32, shape=self.system.n_particles)
-        self.vafter = ti.Vector(DIM, dt=ti.f32, shape=self.system.n_particles)
-        self.residuals = ti.Vector(DIM, dt=ti.f32, shape=self.system.n_particles)
+        self.vbefore = ti.Vector.field(DIM, dtype=ti.f32, shape=self.system.n_particles)
+        self.vafter = ti.Vector.field(DIM, dtype=ti.f32, shape=self.system.n_particles)
+        self.residuals = ti.Vector.field(DIM, dtype=ti.f32, shape=self.system.n_particles)
 
     @ti.func   
     def solve_velocity(self, dt):

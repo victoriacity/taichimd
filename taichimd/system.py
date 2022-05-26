@@ -54,7 +54,7 @@ class Simulation:
         if self.integrator.requires_force:
             self.add_attr("force")
         if self.integrator.requires_hessian:
-            self.hessian = ti.Matrix(DIM, DIM, dt=ti.f32)
+            self.hessian = ti.Matrix(DIM, DIM, dtype=ti.f32)
             self.pair_snode = ti.root.dense(ti.ij, (self.n_particles, self.n_particles))
             self.pair_snode.place(self.hessian)
 
@@ -271,7 +271,7 @@ class MolecularDynamics(Simulation):
         types = []
         for m, n in self.composition.items():
             types += m.atoms * n
-        from_numpy_chk(self.type, np.array(types, dtype=np.int))
+        from_numpy_chk(self.type, np.array(types, dtype=int))
         if not self.is_atomic:
             i0 = 0
             moltypes = []
@@ -285,9 +285,12 @@ class MolecularDynamics(Simulation):
             from_numpy_chk(self.moltypes, np.array(moltypes))
             
 
-    @ti.pyfunc
+    @ti.func
     def get_temp(self) -> ti.f32:
         return 2 * self.ek[None] / (self.n_particles * DIM)
+
+    def get_temp_py(self) -> ti.f32:
+        return 2 * self.ek[None] / (self.n_particles * DIM)    
 
     '''
     Initializes the simulation system by placing particles on a regular grid

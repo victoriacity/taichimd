@@ -22,7 +22,7 @@ class Grid(Module):
         return self
 
     def get_snode(self):
-        return ti.root.dense(ti.indices(*range(DIM)), (self.gridsize,) * DIM)
+        return ti.root.dense(ti.axes(*range(DIM)), (self.gridsize,) * DIM)
 
     def layout(self):
         pass
@@ -80,8 +80,8 @@ class NeighborList(Grid):
 
 
     def layout(self):
-        self.cell_snode = self.system.grid_snode.dense(ti.indices(DIM), self.max_cell)
-        #self.cell_snode = self.get_snode().dynamic(ti.indices(DIM), self.max_cell)
+        self.cell_snode = self.system.grid_snode.dense(ti.axes(DIM), self.max_cell)
+        #self.cell_snode = self.get_snode().dynamic(ti.axes(DIM), self.max_cell)
         #self.neighbor_snode = ti.root.dense(ti.i, self.system.n_particles).dynamic(ti.j, self.max_neighbors)
         self.system.add_field("grid_n_particles", dims=(), dtype=ti.i32)
         self.system.add_layout("grid_particles", self.cell_snode, dims=(), dtype=ti.i32)
@@ -142,7 +142,7 @@ class NeighborTable(Grid):
 
     def layout(self):
         self.system.add_field("grid_n_particles", dims=(), dtype=ti.i32)
-        self.cell_snode = self.system.grid_snode.dense(ti.indices(DIM), self.max_cell)
+        self.cell_snode = self.system.grid_snode.dense(ti.axes(DIM), self.max_cell)
         self.system.add_layout("grid_particles", self.cell_snode, dims=(), dtype=ti.i32)
         n = self.system.n_particles
         self.neighbor_snode = ti.root.bitmasked(ti.ij, (n, n))
@@ -279,6 +279,7 @@ class APIC(ParticleInCell):
         self.system.velocity[i] = new_v
         self.system.C[i] = new_C
 
+@ti.data_oriented
 class Kernel:
     stencil_size = 0
     origin = 0
@@ -291,6 +292,7 @@ class Kernel:
     def stencil(self):
         return ti.grouped(ti.ndrange(*((self.stencil_size,) * DIM)))
 
+@ti.data_oriented
 class QuadraticKernel(Kernel):
     origin = 0.5
     stencil_size = 3 # 3x3 stencil for quadratic kernel

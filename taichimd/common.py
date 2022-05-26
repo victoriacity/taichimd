@@ -21,7 +21,7 @@ def make_cell(n_axes, dx, n_particles=None, x0=(0,) * DIM):
 
 
 def from_numpy_chk(ti_arr, np_arr):
-    if np_arr.dtype != np.int:
+    if np_arr.dtype != int:
         np_arr = np_arr.astype(np.float32)
     ti_arr.from_numpy(np_arr)
     ti_dim = ti_arr.to_numpy().shape

@@ -1,5 +1,5 @@
 import taichi as ti
-import taichi_glsl as ts
+from taichi.math import *
 from .consts import *
 from .grid import NeighborList
 from taichimd import t3mini as t3
@@ -19,8 +19,8 @@ class MolecularModel(t3.AutoInit):
     def __init__(self, radius):
         self.radius = radius
         self.particles = None
-        self.box = ti.Vector(3, ti.f32, (16, ))
-        self.colors = ti.Vector(3, ti.f32, (6,))
+        self.box = ti.Vector.field(3, ti.f32, (16, ))
+        self.colors = ti.Vector.field(3, ti.f32, (6,))
         self.enable_gi_py = False
         self.enable_gi = ti.field(ti.i32, ())
 
@@ -61,8 +61,9 @@ class MolecularModel(t3.AutoInit):
         for i in ti.grouped(self.particles):
             render_particle(self, camera, self.particles[i], self.radius, self.colors[self.system.type[i]])
         # bonds
-        if ti.static(not self.system.is_atomic and self.system.forcefield.bonded != None):
-            self.render_bonds(camera)
+        if ti.static(not self.system.is_atomic):
+            if ti.static(self.system.forcefield is not None and self.system.forcefield.bonded is not None):
+                self.render_bonds(camera)
         # simulation box
         self.draw_simulation_box(camera)
         # postprocessing
@@ -72,17 +73,17 @@ class MolecularModel(t3.AutoInit):
     @ti.func
     def render_floor(self, camera):
         scene = camera.scene
-        c_floor = ts.vec3(*self.floor_color)
-        c_sky = ts.vec3(*self.sky_color)
+        c_floor = vec3(*self.floor_color)
+        c_sky = vec3(*self.sky_color)
         for X in ti.grouped(camera.img):
             W = ti.cast(ti.Vector([X.x, X.y, 1]), ti.f32)
             x = cook_coord(camera, W)
-            world_dir = camera.trans_dir(ts.normalize(x))
+            world_dir = camera.trans_dir(normalize(x))
             if world_dir[1] > 0 or camera.pos[None][1] < floor_y:
                 camera.img[X] = c_sky
             else:
                 f = min(1, -world_dir[1] * 50)
-                n = camera.untrans_dir(ts.vec3(0, 1, 0))
+                n = camera.untrans_dir(vec3(0, 1, 0))
                 pos = camera.pos[None] + world_dir * (camera.pos[None][1] - floor_y) / abs(world_dir[1])
                 #print(pos)
                 pos = camera.untrans_pos(pos)
@@ -90,7 +91,7 @@ class MolecularModel(t3.AutoInit):
                 color = ambient * c_sky * c_floor
                 for light in ti.static(scene.lights):
                     light_color = scene.opt.render_func(pos, n, \
-                        ts.normalize(pos), light, c_floor)
+                        normalize(pos), light, c_floor)
                     color += light_color
                 camera.img[X] = c_sky * (1 - f) + color * f
                 camera.nbuf[X] = n
@@ -129,7 +130,7 @@ class MolecularModel(t3.AutoInit):
                 ftot = 0.0
                 if dy > 0:
                     ftot = form_factor_floor(norm_world, dy, self.radius)
-                gtot = ts.vec3(0.0)
+                gtot = vec3(0.0)
                 if ti.static(self.grid is not None):
                     base = self.grid.grid_index(pos_world)
                     for dI in ti.grouped(ti.ndrange((-4, 5), (-4, 5), (-4, 5))):
@@ -146,13 +147,13 @@ class MolecularModel(t3.AutoInit):
                 else:
                     for i in range(self.particles.shape[0]):
                         # don't compute for particles behind the normal
-                        if ti.dot(self.particles[i] - pos_world, norm_world) < 0:
+                        if dot(self.particles[i] - pos_world, norm_world) < 0:
                             continue
                         f, gi = get_gi_factors(camera, scene, self.particles[i], pos_world, 
                             norm_world, self.radius, self.colors[self.type[i]])
                         ftot += f
                         gtot += gi
-                camera.img[X] = camera.img[X] * ts.vec3(max(1 - ftot, 0)) + gtot * 0.3
+                camera.img[X] = camera.img[X] * vec3(max(1 - ftot, 0)) + gtot * 0.3
 
     @ti.func
     def postprocess(self, camera):
@@ -180,9 +181,9 @@ class FalloffLight(t3.Light):
         self.follow_camera = follow_camera
         self.target_py = target or [0, 0, 0]
         self.lightdist_py = math.sqrt(sum(x ** 2 for x in direction))
-        self.target = ti.Vector(3, ti.float32, ())
-        self.viewtarget = ti.Vector(3, ti.float32, ())
-        self.lightdist = ti.var(ti.float32, ())
+        self.target = ti.Vector.field(3, ti.float32, ())
+        self.viewtarget = ti.Vector.field(3, ti.float32, ())
+        self.lightdist = ti.field(ti.float32, ())
         super().__init__(direction, color)
 
     def _init(self):
@@ -207,7 +208,7 @@ class FalloffLight(t3.Light):
         as the distance to the normal plane of the light position,
         i.e., x0x+y0y+z0z=0.
         '''
-        dist = self.lightdist[None] - ti.dot(pos - self.viewtarget[None], self.viewdir[None])
+        dist = self.lightdist[None] - dot(pos - self.viewtarget[None], self.viewdir[None])
         f = 0.0
         if dist > 0:
             f = 1. / (1. + self.c1 * dist + self.c2 * dist ** 2)
@@ -270,8 +271,8 @@ def render_particle(model, camera, vertex, radius, basecolor):
             n = ti.Vector([dw.x, dw.y, -dz])
             zindex = 1 / (a.z - dz)
             if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
-                normal = ts.normalize(n)
-                view = ts.normalize(a + n)
+                normal = normalize(n)
+                view = normalize(a + n)
                 color = get_ambient(camera, normal, view) * basecolor
                 for light in ti.static(scene.lights):
                     light_color = scene.opt.render_func(a + n, normal, view, light, basecolor)
@@ -298,7 +299,7 @@ def render_cylinder(model, camera, v1, v2, radius, c1, c2):
     M.y, N.y = min(max(M.y, 0), camera.img.shape[0]), min(max(N.y, 0), camera.img.shape[1])
     if (M.x < N.x and M.y < N.y):
         for X in ti.grouped(ti.ndrange((M.x, N.x), (M.y, N.y))):
-            t = ti.dot(X - A, B - A) / (B - A).norm_sqr()
+            t = dot(X - A, B - A) / (B - A).norm_sqr()
             if t < 0 or t > 1:
                 continue
             proj = a * (1 - t) + b * t
@@ -314,8 +315,8 @@ def render_cylinder(model, camera, v1, v2, radius, c1, c2):
 
             if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
                 basecolor = c1 if t < 0.5 else c2
-                normal = ts.normalize(n)
-                view = ts.normalize(a + n)
+                normal = normalize(n)
+                view = normalize(a + n)
                 color = get_ambient(camera, normal, view) * basecolor
                 for light in ti.static(scene.lights):
                     light_color = scene.opt.render_func(a + n, normal, \
@@ -342,18 +343,18 @@ def render_line(camera, p1, p2):
             continue
         zindex = 1 / (a.z + i * dz)    
         if zindex >= ti.atomic_max(camera.zbuf[X], zindex):
-            camera.img[X] = ts.vec3(0, 0.7, 0)
+            camera.img[X] = vec3(0, 0.7, 0)
 
 floor_y = 0.01
 ambient = 0.15
 
 @ti.func
 def get_ambient(camera, normal, view):
-    c_floor = ts.vec3(0.75)
-    c_sky = ts.vec3(0.8, 0.9, 0.95)
-    refl_dir = -ts.reflect(-view, normal)
-    refl_dir = ts.normalize(camera.trans_dir(refl_dir))
-    color = ts.vec3(ambient)
+    c_floor = vec3(0.75)
+    c_sky = vec3(0.8, 0.9, 0.95)
+    refl_dir = -reflect(-view, normal)
+    refl_dir = normalize(camera.trans_dir(refl_dir))
+    color = vec3(ambient)
     if refl_dir[1] > 0:
         color *= c_sky
     else:
@@ -372,7 +373,7 @@ gi_clamp = 1.0
 @ti.func
 def form_factor_ball(n, dpos, r):
     d = dpos.norm()
-    z = ti.dot(n, dpos) / d
+    z = dot(n, dpos) / d
     f = ff_clamp if z > 0 else 0.0
     if d > r and z > 0:
         #f1 = (d ** 2 + r ** 2 - d * r) / (d - r)
@@ -397,7 +398,7 @@ def get_gi_factors(camera, scene, pos, fragpos, normal, radius, color):
     f = form_factor_ball(normal, (pos - fragpos), radius)
     cosfactor = 0.0
     for light in ti.static(scene.lights):
-        cosfactor += max(0.5, ti.dot(light.get_dir(a), ts.normalize(pos - a)))
+        cosfactor += max(0.5, dot(light.get_dir(a), normalize(pos - a)))
     gi = min(f, gi_clamp) / gi_clamp / 5 * color * cosfactor
     return f / ff_clamp, gi
 
@@ -431,9 +432,9 @@ class CookTorrance:
 
     @ti.func
     def brdf(self, normal, viewdir, lightdir, color):
-        halfway = ts.normalize(viewdir + lightdir)
-        ndotv = max(ti.dot(viewdir, normal), self.eps)
-        ndotl = max(ti.dot(lightdir, normal), self.eps)
+        halfway = normalize(viewdir + lightdir)
+        ndotv = max(dot(viewdir, normal), self.eps)
+        ndotl = max(dot(lightdir, normal), self.eps)
         diffuse = self.kd * color / math.pi
         specular = self.microfacet(normal, halfway)\
                     * self.frensel(viewdir, halfway, color)\
@@ -448,7 +449,7 @@ class CookTorrance:
     def microfacet(self, normal, halfway):
         alpha = self.roughness
         ggx = alpha ** 2 / math.pi
-        ggx /= (ti.dot(normal, halfway)**2 * (alpha**2 - 1.0) + 1.0) ** 2
+        ggx /= (dot(normal, halfway)**2 * (alpha**2 - 1.0) + 1.0) ** 2
         return ggx
     
     '''
@@ -456,8 +457,8 @@ class CookTorrance:
     '''
     @ti.func
     def frensel(self, view, halfway, color):
-        f0 = ts.mix(ts.vec3(self.specular), color, self.metallic) 
-        hdotv = min(1, max(ti.dot(halfway, view), 0))
+        f0 = mix(vec3(self.specular), color, self.metallic) 
+        hdotv = min(1, max(dot(halfway, view), 0))
         return (f0 + (1.0 - f0) * (1.0 - hdotv) ** 5) * self.ks
  
     '''
@@ -480,8 +481,8 @@ class CookTorrance:
     @ti.func
     def render_func(self, pos, normal, viewdir, light, color):
         lightdir = light.get_dir(pos)
-        costheta = max(0, ti.dot(normal, lightdir))
-        l_out = ts.vec3(0.0)
+        costheta = max(0, dot(normal, lightdir))
+        l_out = vec3(0.0)
         if costheta > 0:
             l_out = self.brdf(normal, -viewdir, lightdir, color)\
                  * costheta * light.get_color(pos)
