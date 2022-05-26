@@ -1,7 +1,7 @@
 # TaichiMD
 Interactive, GPU-accelerated Molecular (& Macroscopic) Dynamics using the Taichi programming language
 
-**The TaichiMD package is still in a very early stage and is undergoing constant development.**
+(05/26/2022) TaichiMD is now made compatible with taichi v1.0.
 
 ![](propane.gif)![](mpm99.gif)
 
@@ -40,7 +40,7 @@ optional arguments: `-h, --help  show help message and exit`
 TaichiMD ships with a miniature static version of [`taichi_three`](https://github.com/taichi-dev/taichi_three) for rendering graphics, which requires the `taichi_glsl` package. If the renderer was not imported correctly, the example simulations will use the Taichi GUI canvas for graphics.
 
 
-## Future work
+## Possible extensions
 ### Microscopic forces
 * Add support for torsional potentials as cosine series
 * Add Coulomb forces between charged atoms
